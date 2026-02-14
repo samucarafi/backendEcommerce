@@ -88,14 +88,20 @@ export const loginController = async (req, res) => {
     //   : "";
     // Create a token
     const token = await JWTSign({ _id, name });
-    res.cookie("token", token).json({
-      message: "Login bem-sucedido",
-      user: {
-        name,
-        email,
-        role,
-      },
-    });
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: true, // obrigatório em produção (https)
+        sameSite: "None", // obrigatório para domínios diferentes
+      })
+      .json({
+        message: "Login bem-sucedido",
+        user: {
+          name,
+          email,
+          role,
+        },
+      });
   } catch (err) {
     res.status(500).json({ error: "Erro interno no servidor" });
   }
