@@ -12,7 +12,7 @@ export const createProductsController = async (req, res) => {
       name,
       price,
       description,
-      emoji,
+      image,
       stock,
       category,
       weight,
@@ -30,7 +30,7 @@ export const createProductsController = async (req, res) => {
       name,
       price,
       description,
-      emoji,
+      image,
       stock,
       category,
       weight,
@@ -150,7 +150,7 @@ export const changePasswordController = async (req, res) => {
 export const updateProductController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price, description, emoji, stock, category, weight } =
+    const { name, price, description, image, stock, category, weight } =
       req.body;
 
     // return;

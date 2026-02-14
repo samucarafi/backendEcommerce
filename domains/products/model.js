@@ -5,7 +5,7 @@ const ProductSchema = new mongoose.Schema(
     name: String,
     price: Number,
     description: String,
-    emoji: String,
+    image: String,
     stock: Number,
     category: String,
     weight: Number,
@@ -13,6 +13,6 @@ const ProductSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 export default mongoose.model("Product", ProductSchema);
