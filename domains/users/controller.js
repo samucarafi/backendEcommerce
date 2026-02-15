@@ -50,6 +50,7 @@ export const registerUserController = async (req, res) => {
 };
 
 export const logoutController = (req, res) => {
+  const isProduction = "production";
   res
     .clearCookie("token", {
       httpOnly: true,
