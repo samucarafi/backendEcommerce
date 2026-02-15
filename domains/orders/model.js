@@ -1,13 +1,14 @@
-import { model, Schema } from "mongoose";
+import mongoose from "mongoose";
 
-const OrderSchema = new Schema({
-  orderNumber: {
-    type: String,
-    unique: true,
-  },
-  owner: { type: Schema.Types.ObjectId, ref: "User" },
-  preferenceId: { type: String, required: true },
-  items: { type: Object, required: true },
+const orderSchema = new mongoose.Schema({
+  items: Array,
+  totalAmount: Number,
+  shippingAddress: Object,
+  shipping: Object,
+  payment: { type: String, default: "pix" },
+  pixPayload: String,
+  pixPaid: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
 });
 
-export default model("Order", OrderSchema);
+export const Order = mongoose.model("Order", orderSchema);
