@@ -53,7 +53,9 @@ export const logoutController = (req, res) => {
   res
     .clearCookie("token", {
       httpOnly: true,
+      secure: isProduction,
       sameSite: "strict",
+      path: "/",
     })
     .json({ message: "Deslogado com sucesso" });
 };
