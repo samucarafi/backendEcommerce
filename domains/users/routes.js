@@ -8,6 +8,8 @@ import {
   updateUserController,
   changePasswordController,
   getUsersController,
+  verifyEmailController,
+  resendVerificationController,
 } from "./controller.js";
 import { authTokenMiddleware } from "../../utils/authMiddleware.js";
 const router = Router();
@@ -17,6 +19,8 @@ router.post("/auth/register", registerUserController);
 router.post("/auth/login", loginController);
 router.get("/auth/profile", authTokenMiddleware, getProfileController);
 router.post("/auth/logout", logoutController);
+router.get("/auth/verify", verifyEmailController);
+router.post("/auth/resend-verification", resendVerificationController);
 
 // Usuários (Admin)
 router.get("/admin/users", authTokenMiddleware, getUsersController);

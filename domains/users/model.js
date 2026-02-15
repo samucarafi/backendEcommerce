@@ -9,9 +9,10 @@ const UserSchema = new mongoose.Schema(
     },
     password: String,
     role: String,
+    verified: Boolean,
   },
   {
     timestamps: true,
-  }
+  },
 );
 export default mongoose.model("User", UserSchema);

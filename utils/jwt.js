@@ -33,7 +33,37 @@ export const JWTSign = (newUserObj) => {
           reject(error);
         }
         resolve(token);
-      }
+      },
     );
+  });
+};
+
+export const JWTSignEmailVerification = (userId) => {
+  return new Promise((resolve, reject) => {
+    jwt.sign(
+      { userId, type: "email-verification" },
+      JWT_SECRET_KEY,
+      { expiresIn: "1d" },
+      (error, token) => {
+        if (error) {
+          reject(error);
+        }
+        resolve(token);
+      },
+    );
+  });
+};
+
+export const JWTVerifyEmailToken = (token) => {
+  return new Promise((resolve, reject) => {
+    jwt.verify(token, JWT_SECRET_KEY, {}, (error, decoded) => {
+      if (error) return reject(error);
+
+      if (decoded.type !== "email-verification") {
+        return reject(new Error("Tipo de token inválido"));
+      }
+
+      resolve(decoded);
+    });
   });
 };

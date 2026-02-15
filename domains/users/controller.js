@@ -1,7 +1,12 @@
 import User from "./model.js";
 import bcrypt from "bcryptjs";
 import "dotenv/config.js";
-import { JWTSign, JWTVerify } from "../../utils/jwt.js";
+import { JWTSign } from "../../utils/jwt.js";
+import {
+  JWTSignEmailVerification,
+  JWTVerifyEmailToken,
+} from "../../utils/jwt.js";
+import { sendVerificationEmail } from "../../services/emailService.js";
 
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
@@ -9,13 +14,16 @@ const bcryptSalt = bcrypt.genSaltSync();
 export const registerUserController = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
     }
-    const user = await User.findOne({ email });
-    if (user) {
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(409).json({ error: "E-mail já cadastrado" });
     }
+
     const encryptedPassword = bcrypt.hashSync(password, bcryptSalt);
 
     const userDoc = await User.create({
@@ -23,20 +31,21 @@ export const registerUserController = async (req, res) => {
       email,
       password: encryptedPassword,
       role: "user",
+      verified: false,
     });
-    const { _id, role } = userDoc;
-    const token = await JWTSign({ _id, name });
-    res.cookie("token", token).json({
-      message: "Conta criada com sucesso! Faça login para continuar.",
-      user: {
-        name,
-        email,
-        role,
-      },
+
+    // 🔐 gerar token de verificação
+    const verificationToken = await JWTSignEmailVerification(userDoc._id);
+
+    // 📧 enviar email
+    await sendVerificationEmail(email, verificationToken);
+
+    return res.status(201).json({
+      message: "Conta criada! Verifique seu email para ativar.",
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Erro ao registrar usuário" + err });
+    return res.status(500).json({ error: "Erro ao registrar usuário" });
   }
 };
 
@@ -74,36 +83,46 @@ export const getProfileController = async (req, res) => {
 export const loginController = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ error: "E-mail não cadastrado" });
+      return res.status(404).json({ error: "E-mail/senha incorreta" });
     }
+
     const passwordCorrect = bcrypt.compareSync(password, user.password);
-    const { _id, name, role } = user;
     if (!passwordCorrect) {
-      return res.status(401).json({ error: "Senha incorreta" });
+      return res.status(401).json({ error: "E-mail/senha incorreta" });
     }
-    // const maskedCpf = cpf
-    //   ? cpf.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2")
-    //   : "";
-    // Create a token
-    const token = await JWTSign({ _id, name });
-    res
+
+    // 🔴 Bloqueia se não verificado
+    if (!user.verified) {
+      return res.status(401).json({
+        error: "Verifique seu email antes de acessar sua conta.",
+      });
+    }
+
+    const token = await JWTSign({
+      _id: user._id,
+      name: user.name,
+      role: user.role,
+    });
+
+    return res
       .cookie("token", token, {
         httpOnly: true,
-        secure: true, // obrigatório em produção (https)
-        sameSite: "None", // obrigatório para domínios diferentes
+        secure: true,
+        sameSite: "None",
       })
       .json({
         message: "Login bem-sucedido",
         user: {
-          name,
-          email,
-          role,
+          name: user.name,
+          email: user.email,
+          role: user.role,
         },
       });
   } catch (err) {
-    res.status(500).json({ error: "Erro interno no servidor" });
+    return res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
 
@@ -180,5 +199,46 @@ export const updateUserController = async (req, res) => {
     res
       .status(500)
       .json({ success: false, error: "Erro interno no servidor" + err });
+  }
+};
+
+export const verifyEmailController = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    const decoded = await JWTVerifyEmailToken(token);
+
+    await User.findByIdAndUpdate(decoded.userId, {
+      verified: true,
+    });
+
+    return res.redirect(`${process.env.FRONTEND_URL}/verified-success`);
+  } catch (err) {
+    console.error("Erro caiu no catch:", err);
+    return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+  }
+};
+
+export const resendVerificationController = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    if (user.verified) {
+      return res.status(400).json({ error: "Conta já verificada" });
+    }
+
+    const token = await JWTSignEmailVerification(user._id);
+
+    await sendVerificationEmail(email, token);
+
+    return res.json({ message: "Email reenviado com sucesso" });
+  } catch (error) {
+    return res.status(500).json({ error: "Erro ao reenviar email" });
   }
 };
