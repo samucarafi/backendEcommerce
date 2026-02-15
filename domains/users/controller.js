@@ -50,7 +50,12 @@ export const registerUserController = async (req, res) => {
 };
 
 export const logoutController = (req, res) => {
-  res.clearCookie("token").json({ message: "Deslogado com sucesso" });
+  res
+    .clearCookie("token", {
+      httpOnly: true,
+      sameSite: "strict",
+    })
+    .json({ message: "Deslogado com sucesso" });
 };
 //ok
 export const getProfileController = async (req, res) => {
