@@ -50,7 +50,7 @@ export const registerUserController = async (req, res) => {
 };
 
 export const logoutController = (req, res) => {
-  const isProduction = "production";
+  const isProduction = process.env.NODE_ENV === "production";
   res
     .clearCookie("token", {
       httpOnly: true,
