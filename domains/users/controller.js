@@ -54,9 +54,9 @@ export const logoutController = (req, res) => {
   res
     .clearCookie("token", {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: "strict",
-      path: "/",
+      secure: isProduction, // HTTPS obrigatório em produção
+      sameSite: isProduction ? "none" : "lax", // permite cross-site em produção
+      path: "/", // garante que o cookie seja limpo em todas as rotas
     })
     .json({ message: "Deslogado com sucesso" });
 };
