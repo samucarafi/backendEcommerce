@@ -16,7 +16,7 @@ router.post(
   createPreferenceController,
 );
 router.post("/create-pix", createPixController);
-router.post("/webhook", webhookController);
+router.post("/payment/webhook", webhookController);
 router.post("status/:id", statusByIdController);
 // router.post("/calculate-frete", calculateFreteController);
 
