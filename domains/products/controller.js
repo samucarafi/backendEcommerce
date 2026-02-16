@@ -88,6 +88,7 @@ export const loginController = async (req, res) => {
     res.cookie("token", token).json({
       message: "Login bem-sucedido",
       user: {
+        id:_id,
         name,
         email,
         role,
