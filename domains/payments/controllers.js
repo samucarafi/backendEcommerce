@@ -160,7 +160,12 @@ export const createPixController = async (req, res) => {
         result.point_of_interaction.transaction_data.qr_code_base64,
     });
   } catch (error) {
-    console.error("PIX ERROR:", error);
-    res.status(500).json({ error: "Erro ao gerar pagamento PIX" });
+    console.error("ERRO COMPLETO:", JSON.stringify(error, null, 2));
+
+    res.status(500).json({
+      message: "Erro ao gerar PIX",
+      detail: error?.message,
+      cause: error?.cause,
+    });
   }
 };
