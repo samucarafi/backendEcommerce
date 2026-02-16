@@ -111,6 +111,46 @@ export const webhookController = async (req, res) => {
     res.sendStatus(500);
   }
 };
+export const createCheckoutController = async (req, res) => {
+  try {
+    const { cartItems, shipping } = req.body;
+
+    const items = cartItems.map((p) => ({
+      title: p.name,
+      quantity: p.quantity,
+      currency_id: "BRL",
+      unit_price: Number(p.price),
+    }));
+
+    if (shipping > 0) {
+      items.push({
+        title: "Frete",
+        quantity: 1,
+        currency_id: "BRL",
+        unit_price: Number(shipping),
+      });
+    }
+
+    const preference = new Preference(client);
+
+    const response = await preference.create({
+      body: {
+        items,
+        back_urls: {
+          success: process.env.FRONTEND_URL + "/order-success",
+          failure: "https://seusite.com/erro",
+          pending: "https://seusite.com/pendente",
+        },
+        auto_return: "approved",
+      },
+    });
+
+    res.json({ link: response.init_point });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Erro ao gerar pagamento" });
+  }
+};
 
 export const createPixController = async (req, res) => {
   try {
