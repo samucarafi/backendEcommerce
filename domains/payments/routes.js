@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { authTokenMiddleware } from "../../utils/authMiddleware.js";
-import { createPreferenceController } from "./controllers.js";
+import {
+  createPreferenceController,
+  createPixController,
+  webhookController,
+  statusByIdController,
+} from "./controllers.js";
 
 const router = Router();
 
@@ -10,5 +15,9 @@ router.post(
   authTokenMiddleware,
   createPreferenceController,
 );
+router.post("/create-pix", createPixController);
+router.post("/webhook", webhookController);
+router.post("status/:id", statusByIdController);
+// router.post("/calculate-frete", calculateFreteController);
 
 export default router;
