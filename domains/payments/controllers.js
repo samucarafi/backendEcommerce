@@ -127,7 +127,14 @@ export const createPixController = async (req, res) => {
     const total = Number(productsTotal) + Number(shippingCost || 0);
 
     const payment = new Payment(mpClient);
-
+    //colocar cpf da pessoa
+    console.log({
+      total,
+      email: payer.email,
+      token: process.env.MP_ACCESS_TOKEN,
+    });
+    console.log("WEBHOOK URL:", `${process.env.BACKEND_URL}/webhook`);
+    console.log("TOTAL:", total, typeof total);
     const result = await payment.create({
       body: {
         transaction_amount: Number(total),
@@ -136,8 +143,12 @@ export const createPixController = async (req, res) => {
         payer: {
           email: payer.email,
           first_name: payer.first_name,
+          identification: {
+            type: "CPF",
+            number: "11632163640",
+          },
         },
-        notification_url: `${process.env.BACKEND_URL}/webhook`,
+        //notification_url: `${process.env.BACKEND_URL}/payment/webhook`,
       },
     });
 
