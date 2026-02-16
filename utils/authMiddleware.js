@@ -16,11 +16,12 @@ export const authTokenMiddleware = async (req, res, next) => {
   }
 };
 
-export const adminMiddleware = (req, res, next) => {
+export const adminMiddleware = async (req, res, next) => {
   try {
-    if (!req.user) return res.status(401).json({ error: "Não autenticado" });
+    const userInfo = await JWTVerify(req);
+    if (!userInfo) return res.status(401).json({ error: "Não autenticado" });
 
-    if (req.user.role !== "admin")
+    if (userInfo.role !== "admin")
       return res.status(403).json({ error: "Acesso negado" });
 
     next();

@@ -33,7 +33,7 @@ export const createCheckoutController = async (req, res) => {
         },
 
         back_urls: {
-          success: "https://e-commerce-frontend-samuc.vercel.app/success",
+          success: process.env.FRONTEND_URL + "/failure",
           failure: process.env.FRONTEND_URL + "/failure",
           pending: process.env.FRONTEND_URL + "/pending",
         },
