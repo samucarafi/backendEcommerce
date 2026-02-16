@@ -84,7 +84,7 @@ export const loginController = async (req, res) => {
     //   ? cpf.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2")
     //   : "";
     // Create a token
-    const token = await JWTSign({ _id, name });
+    const token = await JWTSign({ _id, name, role });
     res.cookie("token", token).json({
       message: "Login bem-sucedido",
       user: {

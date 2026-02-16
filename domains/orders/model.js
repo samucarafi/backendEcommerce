@@ -1,14 +1,60 @@
 import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
-  items: Array,
-  totalAmount: Number,
-  shippingAddress: Object,
-  shipping: Object,
-  payment: { type: String, default: "pix" },
-  pixPayload: String,
-  pixPaid: { type: Boolean, default: false },
+  orderId: String,
+
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
+
+  customer: {
+    name: String,
+    email: String,
+  },
+
+  items: [
+    {
+      title: String,
+      quantity: Number,
+      unit_price: Number,
+    },
+  ],
+
+  totals: {
+    items: Number,
+    shipping: Number,
+    total: Number,
+  },
+
+  shippingAddress: {
+    cep: String,
+    street: String,
+    number: String,
+    neighborhood: String,
+    city: String,
+    state: String,
+    complement: String,
+  },
+
+  payment: {
+    method: String,
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    mpPaymentId: String,
+    mpPreferenceId: String,
+  },
+
+  deliveryStatus: {
+    type: String,
+    enum: ["processing", "sent", "delivered"],
+    default: "processing",
+  },
+
   createdAt: { type: Date, default: Date.now },
 });
 
-export const Order = mongoose.model("Order", orderSchema);
+export default mongoose.model("Order", orderSchema);
