@@ -28,6 +28,11 @@ export const createPreferenceController = async (req, res) => {
           quantity: Number(item.quantity),
           unit_price: Number(item.unit_price),
         })),
+        payment_methods: {
+          excluded_payment_types: [],
+          excluded_payment_methods: [],
+          installments: 1,
+        },
         back_urls: {
           success: "https://e-commerce-roupas-lovat.vercel.app/success",
           failure: "https://e-commerce-roupas-lovat.vercel.app/failure",
@@ -113,7 +118,7 @@ export const webhookController = async (req, res) => {
 };
 export const createCheckoutController = async (req, res) => {
   try {
-    const { cartItems, shipping } = req.body;
+    const { cartItems, shipping, customer } = req.body;
 
     const items = cartItems.map((p) => ({
       title: p.name,
@@ -136,6 +141,15 @@ export const createCheckoutController = async (req, res) => {
     const response = await preference.create({
       body: {
         items,
+
+        payer: {
+          name: customer.name,
+          email: customer.email,
+          identification: {
+            type: "CPF",
+            number: customer.cpf,
+          },
+        },
         back_urls: {
           success: process.env.FRONTEND_URL + "/order-success",
           failure: "https://seusite.com/erro",
