@@ -148,7 +148,7 @@ export const createPixController = async (req, res) => {
             number: "11632163640",
           },
         },
-        //notification_url: `${process.env.BACKEND_URL}/payment/webhook`,
+        notification_url: `${process.env.BACKEND_URL}/payment/webhook`,
       },
     });
 
