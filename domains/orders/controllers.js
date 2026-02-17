@@ -1,5 +1,5 @@
 import Order from "./model.js";
-import { Preference } from "mercadopago";
+import { Preference, Payment } from "mercadopago";
 import { v4 as uuidv4 } from "uuid";
 import { mpClient as client } from "../../config/mercadopago.js";
 export const createCheckoutController = async (req, res) => {
@@ -9,7 +9,7 @@ export const createCheckoutController = async (req, res) => {
     const orderId = uuidv4();
 
     const itemsTotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-    const itemsMp = items;
+    const itemsMp = [...items];
     if (shipping > 0) {
       itemsMp.push({
         title: "Frete",
@@ -30,15 +30,19 @@ export const createCheckoutController = async (req, res) => {
         payer: {
           name: customer.name,
           email: customer.email,
+          identification: {
+            type: "CPF",
+            number: customer.cpf,
+          },
         },
 
         back_urls: {
-          success: process.env.FRONTEND_URL + "/failure",
+          success: process.env.FRONTEND_URL + "/success",
           failure: process.env.FRONTEND_URL + "/failure",
           pending: process.env.FRONTEND_URL + "/pending",
         },
 
-        notification_url: process.env.BACKEND_URL + "/webhook",
+        notification_url: process.env.BACKEND_URL + "/payment/webhook",
 
         auto_return: "approved",
       },
@@ -46,6 +50,7 @@ export const createCheckoutController = async (req, res) => {
 
     await Order.create({
       orderId,
+      userId: req.user?.id,
       customer,
       items,
       totals: {
@@ -73,15 +78,19 @@ export const webhookController = async (req, res) => {
     if (req.body.type === "payment") {
       const paymentId = req.body.data.id;
 
-      const payment = await mercadopago.payment.findById(paymentId);
+      const paymentClient = new Payment(client);
+      const payment = await paymentClient.get({ id: paymentId });
 
-      const preferenceId = payment.body.metadata?.preference_id;
+      const cpf = payment.body.payer?.identification?.number;
+
+      const orderId = payment.external_reference;
 
       await Order.findOneAndUpdate(
-        { "payment.mpPreferenceId": preferenceId },
+        { orderId },
         {
           "payment.status": payment.body.status,
           "payment.mpPaymentId": paymentId,
+          "payment.cpf": cpf,
         },
       );
     }

@@ -46,6 +46,7 @@ const orderSchema = new mongoose.Schema({
     },
     mpPaymentId: String,
     mpPreferenceId: String,
+    cpf: String,
   },
 
   deliveryStatus: {

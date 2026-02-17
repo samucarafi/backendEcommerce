@@ -16,7 +16,7 @@ const router = express.Router();
 
 router.post("/orders", authTokenMiddleware, createOrder);
 router.get("/orders", authTokenMiddleware, getMyOrders);
-router.post("/checkout", createCheckoutController);
+router.post("/checkout", authTokenMiddleware, createCheckoutController);
 router.get("/admin/orders", adminMiddleware, getAllOrders);
 router.patch("/admin/orders/:id/status", adminMiddleware, updateDeliveryStatus);
 
