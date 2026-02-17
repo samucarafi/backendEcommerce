@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
-  orderId: String,
-
+  orderId: { type: String, unique: true },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -16,9 +15,19 @@ const orderSchema = new mongoose.Schema({
 
   items: [
     {
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: false,
+      },
       title: String,
       quantity: Number,
       unit_price: Number,
+      type: {
+        type: String,
+        enum: ["product", "discount", "shipping"],
+        default: "product",
+      },
     },
   ],
 

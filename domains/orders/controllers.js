@@ -1,4 +1,5 @@
 import Order from "./model.js";
+import Product from "../products/model.js";
 import { Preference, Payment } from "mercadopago";
 import { v4 as uuidv4 } from "uuid";
 import { mpClient as client } from "../../config/mercadopago.js";
@@ -6,10 +7,45 @@ export const createCheckoutController = async (req, res) => {
   try {
     const { items, customer, shippingAddress, shipping } = req.body;
 
+    const validatedItems = [];
+
+    for (const item of items) {
+      // ignorar descontos e frete
+      if (item.type && item.type !== "product") {
+        validatedItems.push(item);
+        continue;
+      }
+
+      const product = await Product.findById(item.productId);
+
+      if (!product)
+        return res.status(404).json({ error: "Produto não encontrado" });
+
+      if (product.stock < item.quantity)
+        return res.status(400).json({ error: "Estoque insuficiente" });
+
+      validatedItems.push({
+        productId: product._id,
+        title: product.name,
+        quantity: item.quantity,
+        unit_price: product.price,
+        type: "product",
+      });
+    }
+
     const orderId = uuidv4();
 
-    const itemsTotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-    const itemsMp = [...items];
+    const itemsTotal = validatedItems.reduce(
+      (s, i) => s + i.unit_price * i.quantity,
+      0,
+    );
+    const itemsMp = validatedItems.map((i) => ({
+      title: i.title,
+      quantity: i.quantity,
+      currency_id: "BRL",
+      unit_price: i.unit_price,
+    }));
+
     if (shipping > 0) {
       itemsMp.push({
         title: "Frete",
@@ -52,7 +88,7 @@ export const createCheckoutController = async (req, res) => {
       orderId,
       userId: req.user?._id,
       customer,
-      items,
+      items: validatedItems,
       totals: {
         items: itemsTotal,
         shipping,
@@ -85,14 +121,30 @@ export const webhookController = async (req, res) => {
 
       const orderId = payment.external_reference;
 
-      await Order.findOneAndUpdate(
-        { orderId },
-        {
-          "payment.status": payment.body.status,
-          "payment.mpPaymentId": paymentId,
-          "payment.cpf": cpf,
-        },
-      );
+      const order = await Order.findOne({ orderId });
+
+      if (!order) return res.sendStatus(200);
+
+      // se aprovou pagamento → baixa estoque
+      if (
+        payment.body.status === "approved" &&
+        order.payment.status !== "approved"
+      ) {
+        for (const item of order.items) {
+          if (item.type !== "product") continue;
+
+          await Product.findOneAndUpdate(
+            { _id: item.productId, stock: { $gte: item.quantity } },
+            { $inc: { stock: -item.quantity } },
+          );
+        }
+      }
+
+      order.payment.status = payment.body.status;
+      order.payment.mpPaymentId = paymentId;
+      order.payment.cpf = cpf;
+
+      await order.save();
     }
 
     res.sendStatus(200);
@@ -106,11 +158,37 @@ export const createOrder = async (req, res) => {
   try {
     const { items, totals, address, customer, preferenceId } = req.body;
 
+    const validatedItems = [];
+
+    for (const item of items) {
+      if (item.type && item.type !== "product") {
+        validatedItems.push(item);
+        continue;
+      }
+
+      const product = await Product.findById(item.productId);
+
+      if (!product)
+        return res.status(404).json({ error: "Produto não encontrado" });
+
+      if (product.stock < item.quantity)
+        return res.status(400).json({ error: "Estoque insuficiente" });
+
+      validatedItems.push({
+        productId: product._id,
+        title: product.name,
+        quantity: item.quantity,
+        unit_price: product.price,
+        type: "product",
+      });
+    }
+
     const order = await Order.create({
       orderId: "ORD-" + Date.now(),
       userId: req.user?._id,
       customer,
-      items,
+      items: validatedItems,
+
       totals,
       shippingAddress: address,
       payment: {
