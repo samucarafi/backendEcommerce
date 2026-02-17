@@ -31,17 +31,18 @@ export const registerUserController = async (req, res) => {
       email,
       password: encryptedPassword,
       role: "user",
-      verified: false,
+      verified: true, // 🔴 DESATIVADO PARA TESTES
     });
 
-    // 🔐 gerar token de verificação
-    const verificationToken = await JWTSignEmailVerification(userDoc._id);
+    // ATIVAR QUANDO TIVER DOMINIO
+    // // 🔐 gerar token de verificação
+    // const verificationToken = await JWTSignEmailVerification(userDoc._id);
 
-    // 📧 enviar email
-    await sendVerificationEmail(email, verificationToken);
+    // // 📧 enviar email
+    // await sendVerificationEmail(email, verificationToken);
 
     return res.status(201).json({
-      message: "Conta criada! Verifique seu email para ativar.",
+      message: "Conta criada!",
     });
   } catch (err) {
     console.error(err);

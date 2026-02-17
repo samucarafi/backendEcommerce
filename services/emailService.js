@@ -5,8 +5,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export const sendVerificationEmail = async (email, token) => {
   const link = `${process.env.BACKEND_URL}/auth/verify?token=${token}`;
 
-  await resend.emails.send({
-    from: "Royal <onboarding@resend.dev>",
+  const data = await resend.emails.send({
+    from: `Royal <${process.env.DOMAIN_NAME}>`,
     to: email,
     subject: "Confirme seu cadastro",
     html: `
