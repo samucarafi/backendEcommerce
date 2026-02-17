@@ -50,7 +50,7 @@ export const createCheckoutController = async (req, res) => {
 
     await Order.create({
       orderId,
-      userId: req.user?.id,
+      userId: req.user?._id,
       customer,
       items,
       totals: {
@@ -108,7 +108,7 @@ export const createOrder = async (req, res) => {
 
     const order = await Order.create({
       orderId: "ORD-" + Date.now(),
-      userId: req.user.id,
+      userId: req.user?._id,
       customer,
       items,
       totals,
@@ -126,7 +126,7 @@ export const createOrder = async (req, res) => {
 };
 
 export const getMyOrders = async (req, res) => {
-  const orders = await Order.find({ userId: req.user.id }).sort({
+  const orders = await Order.find({ userId: req.user?._id }).sort({
     createdAt: -1,
   });
 
