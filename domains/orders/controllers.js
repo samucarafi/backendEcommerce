@@ -159,10 +159,6 @@ export const webhookController = async (req, res) => {
     order.payment.status = status;
     order.payment.mpPaymentId = paymentId;
 
-    // cpf opcional
-    const cpf = payment?.payer?.identification?.number;
-    if (cpf) order.payment.cpf = cpf;
-
     await order.save();
 
     res.sendStatus(200);
