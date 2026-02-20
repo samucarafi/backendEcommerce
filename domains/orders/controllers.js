@@ -110,48 +110,50 @@ export const createCheckoutController = async (req, res) => {
 };
 
 export const webhookController = async (req, res) => {
-  try {
-    if (req.body.type === "payment") {
-      const paymentId = req.body.data.id;
+  console.log("WEBHOOK RECEIVED:", req.body);
+  // try {
+  //   if (!req.body?.data?.id) return res.sendStatus(200);
+  //   if (req.body.type === "payment") {
+  //     const paymentId = req.body.data.id;
 
-      const paymentClient = new Payment(client);
-      const payment = await paymentClient.get({ id: paymentId });
+  //     const paymentClient = new Payment(client);
+  //     const payment = await paymentClient.get({ id: paymentId });
 
-      const cpf = payment.body.payer?.identification?.number;
+  //     if (!payment) return res.sendStatus(200);
 
-      const orderId = payment.external_reference;
+  //     const cpf = payment.payer?.identification?.number;
+  //     const orderId = payment.external_reference;
 
-      const order = await Order.findOne({ orderId });
+  //     const order = await Order.findOne({ orderId });
+  //     if (!order) return res.sendStatus(200);
 
-      if (!order) return res.sendStatus(200);
+  //     // se aprovou pagamento → baixa estoque
+  //     if (
+  //       payment.status === "approved" &&
+  //       order.payment.status !== "approved"
+  //     ) {
+  //       for (const item of order.items) {
+  //         if (item.type !== "product") continue;
 
-      // se aprovou pagamento → baixa estoque
-      if (
-        payment.body.status === "approved" &&
-        order.payment.status !== "approved"
-      ) {
-        for (const item of order.items) {
-          if (item.type !== "product") continue;
+  //         await Product.findOneAndUpdate(
+  //           { _id: item.productId, stock: { $gte: item.quantity } },
+  //           { $inc: { stock: -item.quantity } },
+  //         );
+  //       }
+  //     }
 
-          await Product.findOneAndUpdate(
-            { _id: item.productId, stock: { $gte: item.quantity } },
-            { $inc: { stock: -item.quantity } },
-          );
-        }
-      }
+  //     order.payment.status = payment.status;
+  //     order.payment.mpPaymentId = paymentId;
+  //     order.payment.cpf = cpf;
 
-      order.payment.status = payment.body.status;
-      order.payment.mpPaymentId = paymentId;
-      order.payment.cpf = cpf;
+  //     await order.save();
+  //   }
 
-      await order.save();
-    }
-
-    res.sendStatus(200);
-  } catch (err) {
-    console.log(err);
-    res.sendStatus(500);
-  }
+  //   res.sendStatus(200);
+  // } catch (err) {
+  //   console.log("WEBHOOK ERROR:", err);
+  //   res.sendStatus(500);
+  // }
 };
 
 export const createOrder = async (req, res) => {
