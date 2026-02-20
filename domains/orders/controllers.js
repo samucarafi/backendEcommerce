@@ -110,50 +110,66 @@ export const createCheckoutController = async (req, res) => {
 };
 
 export const webhookController = async (req, res) => {
-  console.log("WEBHOOK RECEIVED:", req.body);
-  // try {
-  //   if (!req.body?.data?.id) return res.sendStatus(200);
-  //   if (req.body.type === "payment") {
-  //     const paymentId = req.body.data.id;
+  try {
+    console.log("WEBHOOK RECEIVED:", req.body);
 
-  //     const paymentClient = new Payment(client);
-  //     const payment = await paymentClient.get({ id: paymentId });
+    if (req.body?.type !== "payment") {
+      return res.sendStatus(200);
+    }
 
-  //     if (!payment) return res.sendStatus(200);
+    const paymentId = req.body?.data?.id;
+    if (!paymentId) return res.sendStatus(200);
 
-  //     const cpf = payment.payer?.identification?.number;
-  //     const orderId = payment.external_reference;
+    let payment;
 
-  //     const order = await Order.findOne({ orderId });
-  //     if (!order) return res.sendStatus(200);
+    try {
+      const paymentClient = new Payment(client);
+      payment = await paymentClient.get({ id: paymentId });
+    } catch (err) {
+      // se pagamento não existe (ex: teste)
+      if (err.status === 404) {
+        console.log("Pagamento não encontrado (teste ou ainda não criado)");
+        return res.sendStatus(200);
+      }
+      throw err;
+    }
 
-  //     // se aprovou pagamento → baixa estoque
-  //     if (
-  //       payment.status === "approved" &&
-  //       order.payment.status !== "approved"
-  //     ) {
-  //       for (const item of order.items) {
-  //         if (item.type !== "product") continue;
+    if (!payment) return res.sendStatus(200);
 
-  //         await Product.findOneAndUpdate(
-  //           { _id: item.productId, stock: { $gte: item.quantity } },
-  //           { $inc: { stock: -item.quantity } },
-  //         );
-  //       }
-  //     }
+    const orderId = payment.external_reference;
+    if (!orderId) return res.sendStatus(200);
 
-  //     order.payment.status = payment.status;
-  //     order.payment.mpPaymentId = paymentId;
-  //     order.payment.cpf = cpf;
+    const order = await Order.findOne({ orderId });
+    if (!order) return res.sendStatus(200);
 
-  //     await order.save();
-  //   }
+    const status = payment.status || "unknown";
 
-  //   res.sendStatus(200);
-  // } catch (err) {
-  //   console.log("WEBHOOK ERROR:", err);
-  //   res.sendStatus(500);
-  // }
+    // baixa estoque apenas 1x
+    if (status === "approved" && order.payment.status !== "approved") {
+      for (const item of order.items) {
+        if (item.type !== "product") continue;
+
+        await Product.findOneAndUpdate(
+          { _id: item.productId, stock: { $gte: item.quantity } },
+          { $inc: { stock: -item.quantity } },
+        );
+      }
+    }
+
+    order.payment.status = status;
+    order.payment.mpPaymentId = paymentId;
+
+    // cpf opcional
+    const cpf = payment?.payer?.identification?.number;
+    if (cpf) order.payment.cpf = cpf;
+
+    await order.save();
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("WEBHOOK ERROR:", err);
+    res.sendStatus(200);
+  }
 };
 
 export const createOrder = async (req, res) => {
