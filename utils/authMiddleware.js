@@ -12,7 +12,8 @@ export const authTokenMiddleware = async (req, res, next) => {
     req.user = userInfo;
 
     next();
-  } catch {
+  } catch (err) {
+    console.error("AUTH ERROR:", err);
     return res.status(401).json({ error: "Token inválido ou expirado" });
   }
 };
@@ -30,6 +31,7 @@ export const adminMiddleware = async (req, res, next) => {
     req.user = userInfo;
     next();
   } catch {
+    console.error("AUTH ERROR:", err);
     res.status(500).json({ error: "Erro de autorização" });
   }
 };

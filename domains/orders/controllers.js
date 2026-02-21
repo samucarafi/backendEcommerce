@@ -18,8 +18,10 @@ export const createCheckoutController = async (req, res) => {
 
       const product = await Product.findById(item.productId);
 
-      if (!product)
+      if (!product) {
+        console.error("Produto não encontrado:", item.productId);
         return res.status(404).json({ error: "Produto não encontrado" });
+      }
 
       if (product.stock < item.quantity)
         return res.status(400).json({ error: "Estoque insuficiente" });
@@ -104,7 +106,7 @@ export const createCheckoutController = async (req, res) => {
 
     res.json({ init_point: mpRes.init_point });
   } catch (err) {
-    console.error(err);
+    console.error("AUTH ERROR:", err);
     res.status(500).json({ error: "Erro ao criar checkout" });
   }
 };
