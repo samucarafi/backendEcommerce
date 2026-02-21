@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-
+import "dotenv/config.js";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendVerificationEmail = async (email, token) => {

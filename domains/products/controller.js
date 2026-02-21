@@ -2,9 +2,11 @@ import Product from "./model.js";
 import bcrypt from "bcryptjs";
 import "dotenv/config.js";
 import { JWTSign, JWTVerify } from "../../utils/jwt.js";
-
+import "dotenv/config.js";
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
+
+const isProd = process.env.NODE_ENV === "production";
 
 export const createProductsController = async (req, res) => {
   try {
@@ -85,15 +87,21 @@ export const loginController = async (req, res) => {
     //   : "";
     // Create a token
     const token = await JWTSign({ _id, name, role });
-    res.cookie("token", token).json({
-      message: "Login bem-sucedido",
-      user: {
-        id:_id,
-        name,
-        email,
-        role,
-      },
-    });
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: isProd, // só true em produção
+        sameSite: isProd ? "None" : "Lax", // None só em produção
+      })
+      .json({
+        message: "Login bem-sucedido",
+        user: {
+          id: _id,
+          name,
+          email,
+          role,
+        },
+      });
   } catch (err) {
     res.status(500).json({ error: "Erro interno no servidor" });
   }
