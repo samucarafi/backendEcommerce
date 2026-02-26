@@ -24,9 +24,9 @@ router.get("/auth/verify", verifyEmailController);
 router.post("/auth/resend-verification", resendVerificationController);
 
 // Usuários (Admin)
-router.get("/admin/users", authTokenMiddleware, getUsersController);
-router.put("/admin/users/:id", authTokenMiddleware, updateUserController);
+router.get("/admin/users", getUsersController); //colocar protect adminMiddleware depois de testar a rota
+router.put("/admin/users/:id", updateUserController); //colocar protect adminMiddleware depois de testar a rota
 router.post("/change-password", authTokenMiddleware, changePasswordController);
-router.delete("/admin/users/:id", authTokenMiddleware, deleteUserController);
+router.delete("/admin/users/:id", deleteUserController); //colocar protect adminMiddleware depois de testar a rota
 
 export default router;

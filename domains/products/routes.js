@@ -9,8 +9,8 @@ import {
 import { authTokenMiddleware } from "../../utils/authMiddleware.js";
 const router = Router();
 
-router.post("/products", authTokenMiddleware, createProductsController);
-export default router;
+router.post("/products", createProductsController);
+export default router; //colocar protect adminMiddleware depois de testar a rota
 router.get("/products", getProductsController);
-router.put("/products/:id", authTokenMiddleware, updateProductController);
-router.delete("/products/:id", authTokenMiddleware, deleteProductController);
+router.put("/products/:id", updateProductController); //colocar protect adminMiddleware depois de testar a rota
+router.delete("/products/:id", deleteProductController); //colocar protect adminMiddleware depois de testar a rota
