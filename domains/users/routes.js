@@ -10,6 +10,7 @@ import {
   getUsersController,
   verifyEmailController,
   resendVerificationController,
+  deleteUserController,
 } from "./controller.js";
 import { authTokenMiddleware } from "../../utils/authMiddleware.js";
 const router = Router();
@@ -26,5 +27,6 @@ router.post("/auth/resend-verification", resendVerificationController);
 router.get("/admin/users", authTokenMiddleware, getUsersController);
 router.put("/admin/users/:id", authTokenMiddleware, updateUserController);
 router.post("/change-password", authTokenMiddleware, changePasswordController);
+router.delete("/admin/users/:id", authTokenMiddleware, deleteUserController);
 
 export default router;

@@ -186,28 +186,78 @@ export const changePasswordController = async (req, res) => {
 
 export const updateUserController = async (req, res) => {
   try {
-    const { id } = req.params;
-    id = "1k2j12n2j1nr21k";
-    const updatedUser = await User.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
+    const adminUser = await User.findById(req.user._id);
 
-    if (!updatedUser) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Usuário não encontrado" });
+    if (!adminUser) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    const { name, email, role } = updatedUser;
+    if (adminUser.role !== "admin") {
+      return res.status(401).json({
+        error: "Usuário não é administrador",
+      });
+    }
 
-    res.json({
-      success: true,
-      user: { _id: id, role, name, email },
+    const { id } = req.params;
+    const { role } = req.body;
+
+    const userToUpdate = await User.findById(id);
+
+    if (!userToUpdate) {
+      return res.status(404).json({
+        error: "Usuário não encontrado",
+      });
+    }
+
+    userToUpdate.role = role;
+    await userToUpdate.save();
+
+    res.status(200).json({
+      message: "Usuário atualizado com sucesso",
+      user: userToUpdate,
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, error: "Erro interno no servidor" + err });
+    console.error("ERRO UPDATE USER:", err);
+    res.status(500).json({
+      error: "Erro interno no servidor",
+    });
+  }
+};
+
+export const deleteUserController = async (req, res) => {
+  try {
+    const adminUser = await User.findById(req.user._id);
+
+    if (!adminUser) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    if (adminUser.role !== "admin") {
+      return res.status(401).json({ error: "Usuário não é administrador" });
+    }
+
+    const { id } = req.params;
+
+    // impedir admin de se deletar
+    if (id === req.user._id.toString()) {
+      return res.status(400).json({
+        error: "Você não pode deletar sua própria conta.",
+      });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+
+    res.status(200).json({
+      message: "Usuário deletado com sucesso.",
+      user: deletedUser,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
 
