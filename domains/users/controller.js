@@ -137,17 +137,6 @@ export const loginController = async (req, res) => {
 
 export const getUsersController = async (req, res) => {
   try {
-    const userDoc = await User.findById(req.user._id);
-    if (!userDoc) {
-      return res.status(404).json({
-        error: "Usuário não encontrado",
-      });
-    }
-    if (userDoc.role !== "admin") {
-      return res.status(401).json({
-        error: "Usuário não é administrador",
-      });
-    }
     const users = await User.find();
 
     res.status(200).json({
