@@ -1,12 +1,5 @@
 import Product from "./model.js";
-import bcrypt from "bcryptjs";
 import "dotenv/config.js";
-import { JWTSign, JWTVerify } from "../../utils/jwt.js";
-import "dotenv/config.js";
-//create a hash for bcrypt
-const bcryptSalt = bcrypt.genSaltSync();
-
-const isProd = process.env.NODE_ENV === "production";
 
 export const createProductsController = async (req, res) => {
   try {
@@ -48,10 +41,6 @@ export const createProductsController = async (req, res) => {
   }
 };
 
-export const logoutController = (req, res) => {
-  res.clearCookie("token").json({ message: "Deslogado com sucesso" });
-};
-
 export const getProductsController = async (req, res) => {
   try {
     const productsDoc = await Product.find();
@@ -64,93 +53,6 @@ export const getProductsController = async (req, res) => {
       message: "Informações de perfil enviadas com sucesso",
       products: productsDoc,
     });
-  } catch (err) {
-    res.status(500).json({ error: "Erro interno no servidor" });
-  }
-};
-
-//ok
-export const loginController = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: "E-mail não cadastrado" });
-    }
-    const passwordCorrect = bcrypt.compareSync(password, user.password);
-    const { _id, name, role } = user;
-    if (!passwordCorrect) {
-      return res.status(401).json({ error: "Senha incorreta" });
-    }
-    // const maskedCpf = cpf
-    //   ? cpf.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2")
-    //   : "";
-    // Create a token
-    const token = await JWTSign({ _id, name, role });
-    res
-      .cookie("token", token, {
-        httpOnly: true,
-        secure: isProd, // só true em produção
-        sameSite: isProd ? "None" : "Lax", // None só em produção
-      })
-      .json({
-        message: "Login bem-sucedido",
-        user: {
-          id: _id,
-          name,
-          email,
-          role,
-        },
-      });
-  } catch (err) {
-    res.status(500).json({ error: "Erro interno no servidor" });
-  }
-};
-
-export const getUsers = async (req, res) => {
-  try {
-    const userDoc = await User.findById(req.user._id);
-    if (!userDoc) {
-      return res.status(404).json({
-        error: "Usuário não encontrado",
-      });
-    }
-    if (userDoc.role !== "admin") {
-      return res.status(401).json({
-        error: "Usuário não é administrador",
-      });
-    }
-    const users = await User.find();
-
-    res.status(200).json({
-      message: "Informações dos usuários enviadas com sucesso",
-      users,
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Erro interno no servidor" });
-  }
-};
-
-export const changePasswordController = async (req, res) => {
-  try {
-    const { currentPassword, newPassword, confirmNewPassword } = req.body;
-    const user = await User.findById(req.user._id);
-
-    if (!user) {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    }
-    const passwordCorrect = bcrypt.compareSync(currentPassword, user.password);
-    if (!passwordCorrect) {
-      return res.status(401).json({ error: "Senha atual incorreta" });
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      return res.status(400).json({ error: "As novas senhas não coincidem" });
-    }
-    const encryptedNewPassword = bcrypt.hashSync(newPassword, bcryptSalt);
-    user.password = encryptedNewPassword;
-    await user.save();
-    res.json({ message: "Senha alterada com sucesso" });
   } catch (err) {
     res.status(500).json({ error: "Erro interno no servidor" });
   }

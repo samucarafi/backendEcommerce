@@ -2,36 +2,33 @@ import { JWTVerify } from "./jwt.js";
 
 export const authTokenMiddleware = async (req, res, next) => {
   try {
-    const token =
-      req.cookies?.token || req.headers.authorization?.split(" ")[1];
+    const authHeader = req.headers.authorization;
 
-    if (!token) return res.status(401).json({ error: "Token ausente" });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Token não fornecido" });
+    }
 
-    const userInfo = await JWTVerify(token);
+    const token = authHeader.split(" ")[1];
 
-    req.user = userInfo;
+    const decoded = await JWTVerify(token);
+
+    req.user = decoded;
 
     next();
   } catch (err) {
-    console.error("AUTH ERROR:", err);
+    console.error("AUTH ERROR:", err.message);
     return res.status(401).json({ error: "Token inválido ou expirado" });
   }
 };
 
-export const adminMiddleware = async (req, res, next) => {
-  try {
-    const token =
-      req.cookies?.token || req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "Token ausente" });
-    const userInfo = await JWTVerify(token);
-    if (!userInfo) return res.status(401).json({ error: "Não autenticado" });
-
-    if (userInfo.role !== "admin")
-      return res.status(403).json({ error: "Acesso negado" });
-    req.user = userInfo;
-    next();
-  } catch {
-    console.error("AUTH ERROR:", err);
-    res.status(500).json({ error: "Erro de autorização" });
+export const adminMiddleware = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Não autenticado" });
   }
+
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Acesso negado" });
+  }
+
+  next();
 };

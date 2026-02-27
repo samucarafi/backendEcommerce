@@ -50,17 +50,6 @@ export const registerUserController = async (req, res) => {
   }
 };
 
-export const logoutController = (req, res) => {
-  const isProduction = process.env.NODE_ENV === "production";
-  res
-    .clearCookie("token", {
-      httpOnly: true,
-      secure: isProduction, // HTTPS obrigatório em produção
-      sameSite: isProduction ? "none" : "lax", // permite cross-site em produção
-      path: "/", // garante que o cookie seja limpo em todas as rotas
-    })
-    .json({ message: "Deslogado com sucesso" });
-};
 //ok
 export const getProfileController = async (req, res) => {
   try {
@@ -116,20 +105,17 @@ export const loginController = async (req, res) => {
       role: user.role,
     });
 
-    return res
-      .cookie("token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "None",
-      })
-      .json({
-        message: "Login bem-sucedido",
-        user: {
-          name: user.name,
-          email: user.email,
-          role: user.role,
-        },
-      });
+    return res.json({
+      message: "Login bem-sucedido",
+      token, // 👈 envie o token
+      expiresIn: "2h",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (err) {
     return res.status(500).json({ error: "Erro interno no servidor" });
   }
@@ -175,16 +161,8 @@ export const changePasswordController = async (req, res) => {
 
 export const updateUserController = async (req, res) => {
   try {
-    const adminUser = await User.findById(req.user._id);
-
-    if (!adminUser) {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    }
-
-    if (adminUser.role !== "admin") {
-      return res.status(401).json({
-        error: "Usuário não é administrador",
-      });
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Acesso negado" });
     }
 
     const { id } = req.params;
@@ -193,9 +171,7 @@ export const updateUserController = async (req, res) => {
     const userToUpdate = await User.findById(id);
 
     if (!userToUpdate) {
-      return res.status(404).json({
-        error: "Usuário não encontrado",
-      });
+      return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
     userToUpdate.role = role;
@@ -207,28 +183,19 @@ export const updateUserController = async (req, res) => {
     });
   } catch (err) {
     console.error("ERRO UPDATE USER:", err);
-    res.status(500).json({
-      error: "Erro interno no servidor",
-    });
+    res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
 
 export const deleteUserController = async (req, res) => {
   try {
-    const adminUser = await User.findById(req.user._id);
-
-    if (!adminUser) {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    }
-
-    if (adminUser.role !== "admin") {
-      return res.status(401).json({ error: "Usuário não é administrador" });
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Acesso negado" });
     }
 
     const { id } = req.params;
 
-    // impedir admin de se deletar
-    if (id === req.user._id.toString()) {
+    if (id === req.user._id) {
       return res.status(400).json({
         error: "Você não pode deletar sua própria conta.",
       });
