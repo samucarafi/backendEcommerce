@@ -77,6 +77,7 @@ export const getProfileController = async (req, res) => {
       user: {
         name: userDoc.name,
         email: userDoc.email,
+        addresses: userDoc.addresses,
         phone: userDoc.phone,
         dateOfBirth: userDoc.dateOfBirth,
         cpfMasked,
