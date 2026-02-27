@@ -7,6 +7,7 @@ import {
   JWTVerifyEmailToken,
 } from "../../utils/jwt.js";
 import { sendVerificationEmail } from "../../services/emailService.js";
+import { decryptCPF, encryptCPF } from "../../utils/cpfCrypto.js";
 
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
@@ -53,26 +54,34 @@ export const registerUserController = async (req, res) => {
 //ok
 export const getProfileController = async (req, res) => {
   try {
-    const userDoc = await User.findById(req.user._id);
+    const userDoc = await User.findById(req.user._id).lean();
+
     if (!userDoc) {
       return res.status(404).json({
         error: "Usuário não encontrado",
       });
     }
-    const { name, email, role, phone, cpf, dateOfBirth } = userDoc;
-    // const maskedCpf = cpf
-    //   ? cpf.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2")
-    //   : "";
+
+    let cpf = "";
+    let cpfMasked = "";
+
+    if (userDoc.cpfEncrypted) {
+      cpf = decryptCPF(userDoc.cpfEncrypted);
+
+      const numbers = cpf.replace(/\D/g, "");
+      cpfMasked = numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
+    }
 
     res.status(200).json({
       message: "Informações de perfil enviadas com sucesso",
       user: {
-        name,
-        email,
-        role,
-        phone,
-        cpf,
-        dateOfBirth,
+        name: userDoc.name,
+        email: userDoc.email,
+        phone: userDoc.phone,
+        dateOfBirth: userDoc.dateOfBirth,
+        cpfMasked,
+        role: userDoc.role,
+        cpf, // enviado para edição
       },
     });
   } catch (err) {
@@ -226,27 +235,58 @@ export const updateMyProfileController = async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
-    // Verifica duplicidade de email
+    /* =========================
+       VERIFICA DUPLICIDADE EMAIL
+    ========================== */
     if (email && email !== user.email) {
       const existingEmail = await User.findOne({ email });
       if (existingEmail)
         return res.status(400).json({ error: "E-mail já em uso" });
     }
 
-    // // Verifica duplicidade de CPF
-    // if (cpf && cpf !== user.cpf) {
-    //   const existingCpf = await User.findOne({ cpf });
-    //   if (existingCpf)
-    //     return res.status(400).json({ error: "CPF já cadastrado" });
-    // }
+    /* =========================
+       VERIFICA DUPLICIDADE CPF
+       (comparando descriptografado)
+    ========================== */
+    if (cpf) {
+      const cleanCpf = cpf.replace(/\D/g, "");
 
+      const usersWithCpf = await User.find({
+        _id: { $ne: user._id },
+        cpfEncrypted: { $exists: true },
+      });
+
+      for (const u of usersWithCpf) {
+        const decrypted = decryptCPF(u.cpfEncrypted);
+        if (decrypted === cleanCpf) {
+          return res.status(400).json({ error: "CPF já cadastrado" });
+        }
+      }
+
+      user.cpfEncrypted = encryptCPF(cleanCpf);
+    }
+
+    /* =========================
+       ATUALIZA CAMPOS
+    ========================== */
     user.name = name ?? user.name;
     user.email = email ?? user.email;
     user.phone = phone ?? user.phone;
-    // user.cpf = cpf ?? user.cpf;
     user.dateOfBirth = dateOfBirth ?? user.dateOfBirth;
 
     await user.save();
+
+    /* =========================
+       PREPARA RETORNO
+    ========================== */
+    let cpfDecrypted = "";
+    let cpfMasked = "";
+
+    if (user.cpfEncrypted) {
+      cpfDecrypted = decryptCPF(user.cpfEncrypted);
+
+      cpfMasked = cpfDecrypted.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
+    }
 
     res.json({
       message: "Perfil atualizado com sucesso",
@@ -255,9 +295,9 @@ export const updateMyProfileController = async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        //cpf: user.cpf,
         dateOfBirth: user.dateOfBirth,
-        role: user.role,
+        cpf: cpfDecrypted,
+        cpfMasked,
         verified: user.verified,
       },
     });
@@ -266,6 +306,7 @@ export const updateMyProfileController = async (req, res) => {
     res.status(500).json({ error: "Erro ao atualizar perfil" });
   }
 };
+
 export const verifyEmailController = async (req, res) => {
   try {
     const { token } = req.query;

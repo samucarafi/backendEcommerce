@@ -3,7 +3,16 @@ import Product from "../products/model.js";
 import { Preference, Payment } from "mercadopago";
 import { v4 as uuidv4 } from "uuid";
 import { mpClient as client } from "../../config/mercadopago.js";
+import User from "../users/model.js";
+import { encryptCPF } from "../../utils/cpfCrypto.js";
+import { decryptCPF } from "../../utils/cpfCrypto.js";
 
+function maskCPF(cpf) {
+  if (!cpf) return null;
+
+  const numbers = cpf.replace(/\D/g, "");
+  return numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
+}
 export const getPaymentLink = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -41,6 +50,24 @@ export const createCheckoutController = async (req, res) => {
         validatedItems.push(item);
         continue;
       }
+      const user = await User.findById(req.user._id);
+
+      if (customer.cpf && !user.cpfEncrypted) {
+        user.cpfEncrypted = encryptCPF(customer.cpf);
+      }
+
+      // salvar endereço se ainda não existir
+      const alreadyExists = user.addresses.some(
+        (addr) =>
+          addr.cep === shippingAddress.cep &&
+          addr.number === shippingAddress.number,
+      );
+
+      if (!alreadyExists) {
+        user.addresses.push(shippingAddress);
+      }
+
+      await user.save();
 
       const product = await Product.findById(item.productId);
 
@@ -246,16 +273,70 @@ export const createOrder = async (req, res) => {
 };
 
 export const getMyOrders = async (req, res) => {
-  const orders = await Order.find({ userId: req.user?._id }).sort({
-    createdAt: -1,
-  });
+  try {
+    const orders = await Order.find().populate("userId").lean(); // 🔥 muito importante para performance
 
-  res.json(orders);
+    const ordersFormatted = orders.map((order) => {
+      let cpfMasked = null;
+
+      if (order.userId?.cpfEncrypted) {
+        const decrypted = decryptCPF(order.userId.cpfEncrypted);
+        cpfMasked = maskCPF(decrypted);
+      }
+
+      return {
+        ...order,
+        userId: order.userId
+          ? {
+              ...order.userId,
+              cpf: cpfMasked,
+              cpfEncrypted: undefined, // remove do retorno
+            }
+          : null,
+      };
+    });
+
+    res.json(ordersFormatted);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar pedidos" });
+  }
 };
 
 export const getAllOrders = async (req, res) => {
-  const orders = await Order.find().sort({ createdAt: -1 });
-  res.json(orders);
+  try {
+    const orders = await Order.find()
+      .populate("userId")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const isAdmin = req.user?.role === "admin";
+
+    const formatted = orders.map((order) => {
+      let cpf = null;
+
+      if (order.userId?.cpfEncrypted) {
+        cpf = decryptCPF(order.userId.cpfEncrypted);
+      }
+
+      return {
+        ...order,
+        userId: order.userId
+          ? {
+              ...order.userId,
+              cpf: isAdmin ? cpf : undefined, // 🔐 só admin recebe
+              cpfEncrypted: undefined,
+              password: undefined,
+            }
+          : null,
+      };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar pedidos" });
+  }
 };
 
 export const updateDeliveryStatus = async (req, res) => {

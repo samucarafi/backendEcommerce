@@ -20,7 +20,12 @@ router.get("/orders", authTokenMiddleware, getMyOrders);
 router.get("/orders/:id/pay", authTokenMiddleware, getPaymentLink);
 router.post("/checkout", authTokenMiddleware, createCheckoutController);
 router.get("/admin/orders", authTokenMiddleware, adminMiddleware, getAllOrders);
-router.patch("/admin/orders/:id/status", adminMiddleware, updateDeliveryStatus);
+router.patch(
+  "/admin/orders/:id/status",
+  authTokenMiddleware,
+  adminMiddleware,
+  updateDeliveryStatus,
+);
 
 router.post("/payment/webhook", webhookController);
 
