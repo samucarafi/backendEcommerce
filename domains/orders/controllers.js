@@ -274,7 +274,11 @@ export const createOrder = async (req, res) => {
 
 export const getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find().populate("userId").lean(); // 🔥 muito importante para performance
+    const orders = await Order.find({
+      userId: req.user._id, // 🔐 FILTRO CORRETO
+    })
+      .populate("userId", "name email cpfEncrypted")
+      .lean();
 
     const ordersFormatted = orders.map((order) => {
       let cpfMasked = null;
@@ -288,9 +292,10 @@ export const getMyOrders = async (req, res) => {
         ...order,
         userId: order.userId
           ? {
-              ...order.userId,
-              cpf: cpfMasked,
-              cpfEncrypted: undefined, // remove do retorno
+              _id: order.userId._id,
+              name: order.userId.name,
+              email: order.userId.email,
+              cpf: cpfMasked, // 👈 apenas mascarado
             }
           : null,
       };
