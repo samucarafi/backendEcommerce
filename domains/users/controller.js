@@ -135,13 +135,16 @@ export const loginController = async (req, res) => {
 
 export const getUsersController = async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find()
+      .select("-password -cpfEncrypted -__v")
+      .lean();
 
     res.status(200).json({
       message: "Informações dos usuários enviadas com sucesso",
       users,
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
