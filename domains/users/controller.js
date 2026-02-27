@@ -59,7 +59,7 @@ export const getProfileController = async (req, res) => {
         error: "Usuário não encontrado",
       });
     }
-    const { name, email, role } = userDoc;
+    const { name, email, role, phone, cpf, dateOfBirth } = userDoc;
     // const maskedCpf = cpf
     //   ? cpf.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2")
     //   : "";
@@ -70,6 +70,9 @@ export const getProfileController = async (req, res) => {
         name,
         email,
         role,
+        phone,
+        cpf,
+        dateOfBirth,
       },
     });
   } catch (err) {
@@ -216,7 +219,53 @@ export const deleteUserController = async (req, res) => {
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
+export const updateMyProfileController = async (req, res) => {
+  try {
+    const { name, email, phone, cpf, dateOfBirth } = req.body;
 
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
+
+    // Verifica duplicidade de email
+    if (email && email !== user.email) {
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail)
+        return res.status(400).json({ error: "E-mail já em uso" });
+    }
+
+    // // Verifica duplicidade de CPF
+    // if (cpf && cpf !== user.cpf) {
+    //   const existingCpf = await User.findOne({ cpf });
+    //   if (existingCpf)
+    //     return res.status(400).json({ error: "CPF já cadastrado" });
+    // }
+
+    user.name = name ?? user.name;
+    user.email = email ?? user.email;
+    user.phone = phone ?? user.phone;
+    // user.cpf = cpf ?? user.cpf;
+    user.dateOfBirth = dateOfBirth ?? user.dateOfBirth;
+
+    await user.save();
+
+    res.json({
+      message: "Perfil atualizado com sucesso",
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        //cpf: user.cpf,
+        dateOfBirth: user.dateOfBirth,
+        role: user.role,
+        verified: user.verified,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao atualizar perfil" });
+  }
+};
 export const verifyEmailController = async (req, res) => {
   try {
     const { token } = req.query;

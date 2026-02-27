@@ -10,6 +10,7 @@ import {
   verifyEmailController,
   resendVerificationController,
   deleteUserController,
+  updateMyProfileController,
 } from "./controller.js";
 import {
   adminMiddleware,
@@ -21,6 +22,7 @@ const router = Router();
 router.post("/auth/register", registerUserController);
 router.post("/auth/login", loginController);
 router.get("/auth/profile", authTokenMiddleware, getProfileController);
+router.put("/auth/profile", authTokenMiddleware, updateMyProfileController);
 router.get("/auth/verify", verifyEmailController);
 router.post("/auth/resend-verification", resendVerificationController);
 
