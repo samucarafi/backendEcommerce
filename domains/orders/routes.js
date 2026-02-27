@@ -4,6 +4,7 @@ import {
   createOrder,
   getAllOrders,
   getMyOrders,
+  getPaymentLink,
   updateDeliveryStatus,
   webhookController,
 } from "./controllers.js";
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.post("/orders", authTokenMiddleware, createOrder);
 router.get("/orders", authTokenMiddleware, getMyOrders);
+router.get("/orders/:id/pay", authTokenMiddleware, getPaymentLink);
 router.post("/checkout", authTokenMiddleware, createCheckoutController);
 router.get("/admin/orders", authTokenMiddleware, adminMiddleware, getAllOrders);
 router.patch("/admin/orders/:id/status", adminMiddleware, updateDeliveryStatus);

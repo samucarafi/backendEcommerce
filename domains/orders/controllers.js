@@ -3,6 +3,32 @@ import Product from "../products/model.js";
 import { Preference, Payment } from "mercadopago";
 import { v4 as uuidv4 } from "uuid";
 import { mpClient as client } from "../../config/mercadopago.js";
+
+export const getPaymentLink = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) return res.status(404).json({ error: "Pedido não encontrado" });
+
+    if (!order.payment?.mpPreferenceId)
+      return res.status(400).json({ error: "Pedido não possui preference" });
+
+    // busca a preference existente no MP
+    const preference = new Preference(client);
+
+    const mpRes = await preference.get({
+      preferenceId: order.payment.mpPreferenceId,
+    });
+
+    return res.json({
+      init_point: mpRes.init_point,
+    });
+  } catch (err) {
+    console.error("GET PAYMENT LINK ERROR:", err);
+    res.status(500).json({ error: "Erro ao buscar link de pagamento" });
+  }
+};
+
 export const createCheckoutController = async (req, res) => {
   try {
     const { items, customer, shippingAddress, shipping } = req.body;
