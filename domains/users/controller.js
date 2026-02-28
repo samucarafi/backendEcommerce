@@ -62,13 +62,11 @@ export const getProfileController = async (req, res) => {
       });
     }
 
-    let cpf = "";
     let cpfMasked = "";
 
     if (userDoc.cpfEncrypted) {
-      cpf = decryptCPF(userDoc.cpfEncrypted);
-
-      const numbers = cpf.replace(/\D/g, "");
+      const decrypted = decryptCPF(userDoc.cpfEncrypted);
+      const numbers = decrypted.replace(/\D/g, "");
       cpfMasked = numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
     }
 
@@ -82,7 +80,6 @@ export const getProfileController = async (req, res) => {
         dateOfBirth: userDoc.dateOfBirth,
         cpfMasked,
         role: userDoc.role,
-        cpf, // enviado para edição
       },
     });
   } catch (err) {
@@ -118,14 +115,25 @@ export const loginController = async (req, res) => {
       role: user.role,
     });
 
+    let cpfMasked = "";
+
+    if (user.cpfEncrypted) {
+      const decrypted = decryptCPF(user.cpfEncrypted);
+      const numbers = decrypted.replace(/\D/g, "");
+      cpfMasked = numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
+    }
+
     return res.json({
       message: "Login bem-sucedido",
       token, // 👈 envie o token
       expiresIn: "2h",
       user: {
-        id: user._id,
         name: user.name,
         email: user.email,
+        addresses: user.addresses,
+        phone: user.phone,
+        dateOfBirth: user.dateOfBirth,
+        cpfMasked,
         role: user.role,
       },
     });

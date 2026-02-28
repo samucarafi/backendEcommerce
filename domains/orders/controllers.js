@@ -41,6 +41,44 @@ export const getPaymentLink = async (req, res) => {
 export const createCheckoutController = async (req, res) => {
   try {
     const { items, customer, shippingAddress, shipping } = req.body;
+    const user = await User.findById(req.user._id);
+    let cpfToUse = "";
+
+    if (!customer?.cpf) {
+      return res.status(400).json({ error: "CPF obrigatório" });
+    }
+    if (customer.cpf === "USE_SAVED_CPF") {
+      if (!user.cpfEncrypted) {
+        return res.status(400).json({ error: "CPF não cadastrado" });
+      }
+
+      cpfToUse = decryptCPF(user.cpfEncrypted);
+    } else {
+      const cleanCpf = customer.cpf.replace(/\D/g, "");
+
+      if (!cpfUtils.isValid(cleanCpf)) {
+        return res.status(400).json({ error: "CPF inválido" });
+      }
+
+      cpfToUse = cleanCpf;
+
+      if (!user.cpfEncrypted) {
+        user.cpfEncrypted = encryptCPF(cleanCpf);
+      }
+    }
+
+    // salvar endereço se ainda não existir
+    const alreadyExists = user.addresses.some(
+      (addr) =>
+        addr.cep === shippingAddress.cep &&
+        addr.number === shippingAddress.number,
+    );
+
+    if (!alreadyExists) {
+      user.addresses.push(shippingAddress);
+    }
+
+    await user.save();
 
     const validatedItems = [];
 
@@ -50,24 +88,6 @@ export const createCheckoutController = async (req, res) => {
         validatedItems.push(item);
         continue;
       }
-      const user = await User.findById(req.user._id);
-
-      if (customer.cpf && !user.cpfEncrypted) {
-        user.cpfEncrypted = encryptCPF(customer.cpf);
-      }
-
-      // salvar endereço se ainda não existir
-      const alreadyExists = user.addresses.some(
-        (addr) =>
-          addr.cep === shippingAddress.cep &&
-          addr.number === shippingAddress.number,
-      );
-
-      if (!alreadyExists) {
-        user.addresses.push(shippingAddress);
-      }
-
-      await user.save();
 
       const product = await Product.findById(item.productId);
 
@@ -123,7 +143,7 @@ export const createCheckoutController = async (req, res) => {
           email: customer.email,
           identification: {
             type: "CPF",
-            number: customer.cpf,
+            number: cpfToUse,
           },
         },
 
