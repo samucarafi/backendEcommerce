@@ -148,7 +148,7 @@ export const createCheckoutController = async (req, res) => {
         },
 
         back_urls: {
-          success: process.env.FRONTEND_URL + "/success",
+          success: "https://e-commerce-eight-delta-14.vercel.app/success",
           failure: process.env.FRONTEND_URL + "/failure",
           pending: process.env.FRONTEND_URL + "/pending",
         },
@@ -295,9 +295,10 @@ export const createOrder = async (req, res) => {
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({
-      userId: req.user._id, // 🔐 FILTRO CORRETO
+      userId: req.user._id,
     })
       .populate("userId", "name email cpfEncrypted")
+      .populate("items.productId", "stock name")
       .lean();
 
     const ordersFormatted = orders.map((order) => {
