@@ -148,7 +148,7 @@ export const createCheckoutController = async (req, res) => {
         },
 
         back_urls: {
-          success: "https://e-commerce-eight-delta-14.vercel.app/success",
+          success: process.env.FRONTEND_URL + "/success",
           failure: process.env.FRONTEND_URL + "/failure",
           pending: process.env.FRONTEND_URL + "/pending",
         },
