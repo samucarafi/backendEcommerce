@@ -10,8 +10,12 @@ export const createProductsController = async (req, res) => {
       image,
       stock,
       category,
+      type,
+      gender,
+      brand,
       weight,
       popularity,
+      isNew,
     } = req.body;
 
     // if (!email || !password) {
@@ -28,8 +32,12 @@ export const createProductsController = async (req, res) => {
       image,
       stock,
       category,
+      type,
+      gender,
+      brand,
       weight,
       popularity,
+      isNew,
     });
     res.json({
       message: "Produto criado com sucesso!",
@@ -61,8 +69,6 @@ export const getProductsController = async (req, res) => {
 export const updateProductController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price, description, image, stock, category, weight } =
-      req.body;
 
     // return;
     // const updateData = {};

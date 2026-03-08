@@ -7,12 +7,51 @@ const ProductSchema = new mongoose.Schema(
     description: String,
     image: String,
     stock: Number,
-    category: String,
+
+    // categoria olfativa
+    category: {
+      type: String,
+      enum: [
+        "Floral",
+        "Amadeirado",
+        "Oriental",
+        "Cítrico",
+        "Aromático",
+        "Gourmand",
+      ],
+    },
+
+    // tipo de produto
+    type: {
+      type: String,
+      enum: ["Perfume", "Decante"],
+      required: true,
+    },
+
+    // gênero
+    gender: {
+      type: String,
+      enum: ["Masculino", "Feminino", "Unissex"],
+    },
+
+    // lançamento
+    isNew: {
+      type: Boolean,
+      default: false,
+    },
+
+    // marca
+    brand: String,
+
     weight: Number,
-    popularity: Number,
+    popularity: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
   },
 );
+
 export default mongoose.model("Product", ProductSchema);
