@@ -35,7 +35,7 @@ const ProductSchema = new mongoose.Schema(
     },
 
     // lançamento
-    isNew: {
+    isNewProduct: {
       type: Boolean,
       default: false,
     },

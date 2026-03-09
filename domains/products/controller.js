@@ -15,7 +15,7 @@ export const createProductsController = async (req, res) => {
       brand,
       weight,
       popularity,
-      isNew,
+      isNewProduct,
     } = req.body;
 
     // if (!email || !password) {
@@ -37,7 +37,7 @@ export const createProductsController = async (req, res) => {
       brand,
       weight,
       popularity,
-      isNew,
+      isNewProduct,
     });
     res.json({
       message: "Produto criado com sucesso!",
