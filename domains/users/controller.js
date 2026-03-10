@@ -31,11 +31,12 @@ export const registerUserController = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    const normalizedEmail = email.toLowerCase().trim();
     if (!email || !password) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(409).json({ error: "E-mail já cadastrado" });
     }
@@ -44,7 +45,7 @@ export const registerUserController = async (req, res) => {
 
     const userDoc = await User.create({
       name,
-      email,
+      email: normalizedEmail,
       password: encryptedPassword,
       role: "user",
       verified: false,
@@ -56,7 +57,7 @@ export const registerUserController = async (req, res) => {
 
     // 📧 enviar email
     try {
-      await sendVerificationEmail(email, verificationToken);
+      await sendVerificationEmail(normalizedEmail, verificationToken);
     } catch (emailError) {
       console.error("Erro ao enviar email:", emailError);
     }
@@ -109,8 +110,8 @@ export const getProfileController = async (req, res) => {
 export const loginController = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(404).json({ error: "E-mail/senha incorreta" });
     }
@@ -269,7 +270,8 @@ export const updateMyProfileController = async (req, res) => {
        VERIFICA DUPLICIDADE EMAIL
     ========================== */
     if (email && email !== user.email) {
-      const existingEmail = await User.findOne({ email });
+      const normalizedEmail = email.toLowerCase().trim();
+      const existingEmail = await User.findOne({ email: normalizedEmail });
       if (existingEmail)
         return res.status(400).json({ error: "E-mail já em uso" });
     }
@@ -300,7 +302,7 @@ export const updateMyProfileController = async (req, res) => {
        ATUALIZA CAMPOS
     ========================== */
     user.name = name ?? user.name;
-    user.email = email ?? user.email;
+    user.email = email ? email.toLowerCase().trim() : user.email;
     user.phone = phone ?? user.phone;
     user.dateOfBirth = dateOfBirth ?? user.dateOfBirth;
 
@@ -371,7 +373,8 @@ export const resendVerificationController = async (req, res) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.status(404).json({ error: "Usuário não encontrado" });
@@ -393,7 +396,7 @@ export const resendVerificationController = async (req, res) => {
 
     const token = await JWTSignEmailVerification(user._id);
 
-    await sendVerificationEmail(email, token);
+    await sendVerificationEmail(normalizedEmail, token);
 
     user.lastVerificationEmail = Date.now();
     await user.save();
@@ -408,8 +411,8 @@ export const resendVerificationController = async (req, res) => {
 export const forgotPasswordController = async (req, res) => {
   try {
     const { email } = req.body;
-
-    const user = await User.findOne({ email });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.json({
@@ -419,7 +422,7 @@ export const forgotPasswordController = async (req, res) => {
 
     const token = JWTSignPasswordReset(user._id);
 
-    await sendPasswordResetEmail(email, token);
+    await sendPasswordResetEmail(normalizedEmail, token);
 
     res.json({
       message: "Email de recuperação enviado",
