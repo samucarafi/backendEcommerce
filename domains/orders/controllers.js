@@ -6,6 +6,7 @@ import { mpClient as client } from "../../config/mercadopago.js";
 import User from "../users/model.js";
 import { encryptCPF } from "../../utils/cpfCrypto.js";
 import { decryptCPF } from "../../utils/cpfCrypto.js";
+import { cpfUtils } from "../../../frontend/e-commerce/src/Utils/cpfUtils.js";
 
 function maskCPF(cpf) {
   if (!cpf) return null;
@@ -25,6 +26,7 @@ function getFrontendUrl() {
 }
 
 const frontend = getFrontendUrl();
+
 export const getPaymentLink = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
