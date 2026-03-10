@@ -13,6 +13,7 @@ import {
   sendPasswordResetEmail,
 } from "../../services/emailService.js";
 import { decryptCPF, encryptCPF } from "../../utils/cpfCrypto.js";
+import { formatName } from "../../utils/formatName.js";
 
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
@@ -32,6 +33,7 @@ export const registerUserController = async (req, res) => {
     const { name, email, password } = req.body;
 
     const normalizedEmail = email.toLowerCase().trim();
+    const formattedName = formatName(name);
     if (!email || !password) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
     }
@@ -44,7 +46,7 @@ export const registerUserController = async (req, res) => {
     const encryptedPassword = bcrypt.hashSync(password, bcryptSalt);
 
     const userDoc = await User.create({
-      name,
+      name: formattedName,
       email: normalizedEmail,
       password: encryptedPassword,
       role: "user",
@@ -301,7 +303,7 @@ export const updateMyProfileController = async (req, res) => {
     /* =========================
        ATUALIZA CAMPOS
     ========================== */
-    user.name = name ?? user.name;
+    user.name = name ? formatName(name) : user.name;
     user.email = email ? email.toLowerCase().trim() : user.email;
     user.phone = phone ?? user.phone;
     user.dateOfBirth = dateOfBirth ?? user.dateOfBirth;
