@@ -32,16 +32,19 @@ export const registerUserController = async (req, res) => {
       email,
       password: encryptedPassword,
       role: "user",
-      verified: true, // 🔴 DESATIVADO PARA TESTES
+      verified: false,
     });
 
     // ATIVAR QUANDO TIVER DOMINIO
-    // // 🔐 gerar token de verificação
-    // const verificationToken = await JWTSignEmailVerification(userDoc._id);
+    // 🔐 gerar token de verificação
+    const verificationToken = await JWTSignEmailVerification(userDoc._id);
 
-    // // 📧 enviar email
-    // await sendVerificationEmail(email, verificationToken);
-
+    // 📧 enviar email
+    try {
+      await sendVerificationEmail(email, verificationToken);
+    } catch (emailError) {
+      console.error("Erro ao enviar email:", emailError);
+    }
     return res.status(201).json({
       message: "Conta criada!",
     });
@@ -323,15 +326,28 @@ export const verifyEmailController = async (req, res) => {
   try {
     const { token } = req.query;
 
+    if (!token) {
+      return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+    }
+
     const decoded = await JWTVerifyEmailToken(token);
 
-    await User.findByIdAndUpdate(decoded.userId, {
-      verified: true,
-    });
+    const user = await User.findById(decoded.userId);
+
+    if (!user) {
+      return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+    }
+
+    if (user.verified) {
+      return res.redirect(`${process.env.FRONTEND_URL}/verified-success`);
+    }
+
+    user.verified = true;
+    await user.save();
 
     return res.redirect(`${process.env.FRONTEND_URL}/verified-success`);
   } catch (err) {
-    console.error("Erro caiu no catch:", err);
+    console.error(err);
     return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
   }
 };
@@ -350,12 +366,26 @@ export const resendVerificationController = async (req, res) => {
       return res.status(400).json({ error: "Conta já verificada" });
     }
 
+    // limite de 60s entre envios
+    if (
+      user.lastVerificationEmail &&
+      Date.now() - user.lastVerificationEmail < 60000
+    ) {
+      return res.status(429).json({
+        error: "Aguarde 1 minuto antes de solicitar novamente.",
+      });
+    }
+
     const token = await JWTSignEmailVerification(user._id);
 
     await sendVerificationEmail(email, token);
 
+    user.lastVerificationEmail = Date.now();
+    await user.save();
+
     return res.json({ message: "Email reenviado com sucesso" });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({ error: "Erro ao reenviar email" });
   }
 };
