@@ -6,7 +6,6 @@ import { mpClient as client } from "../../config/mercadopago.js";
 import User from "../users/model.js";
 import { encryptCPF } from "../../utils/cpfCrypto.js";
 import { decryptCPF } from "../../utils/cpfCrypto.js";
-import { cpfUtils } from "../../../frontend/e-commerce/src/Utils/cpfUtils.js";
 
 function maskCPF(cpf) {
   if (!cpf) return null;
@@ -69,10 +68,6 @@ export const createCheckoutController = async (req, res) => {
       cpfToUse = decryptCPF(user.cpfEncrypted);
     } else {
       const cleanCpf = customer.cpf.replace(/\D/g, "");
-
-      if (!cpfUtils.isValid(cleanCpf)) {
-        return res.status(400).json({ error: "CPF inválido" });
-      }
 
       cpfToUse = cleanCpf;
 
