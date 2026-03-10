@@ -61,7 +61,7 @@ export const sendVerificationEmail = async (email, token) => {
       </div>
       `,
     });
-
+    console.log("Email de verificação enviado:", response);
     return response;
   } catch (error) {
     console.error("Erro ao enviar email:", error);
