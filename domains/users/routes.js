@@ -11,6 +11,8 @@ import {
   resendVerificationController,
   deleteUserController,
   updateMyProfileController,
+  forgotPasswordController,
+  resetPasswordController,
 } from "./controller.js";
 import {
   adminMiddleware,
@@ -25,7 +27,8 @@ router.get("/auth/profile", authTokenMiddleware, getProfileController);
 router.put("/auth/profile", authTokenMiddleware, updateMyProfileController);
 router.get("/auth/verify", verifyEmailController);
 router.post("/auth/resend-verification", resendVerificationController);
-
+router.post("/auth/forgot-password", forgotPasswordController);
+router.post("/auth/reset-password", resetPasswordController);
 // Usuários (Admin)
 router.get(
   "/admin/users",

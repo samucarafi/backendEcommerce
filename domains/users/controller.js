@@ -5,8 +5,13 @@ import { JWTSign } from "../../utils/jwt.js";
 import {
   JWTSignEmailVerification,
   JWTVerifyEmailToken,
+  JWTSignPasswordReset,
+  JWTVerifyPasswordReset,
 } from "../../utils/jwt.js";
-import { sendVerificationEmail } from "../../services/emailService.js";
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "../../services/emailService.js";
 import { decryptCPF, encryptCPF } from "../../utils/cpfCrypto.js";
 
 //create a hash for bcrypt
@@ -397,5 +402,58 @@ export const resendVerificationController = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Erro ao reenviar email" });
+  }
+};
+
+export const forgotPasswordController = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.json({
+        message: "Se o email existir, enviaremos instruções.",
+      });
+    }
+
+    const token = JWTSignPasswordReset(user._id);
+
+    await sendPasswordResetEmail(email, token);
+
+    res.json({
+      message: "Email de recuperação enviado",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao solicitar redefinição" });
+  }
+};
+
+export const resetPasswordController = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    const decoded = JWTVerifyPasswordReset(token);
+
+    const user = await User.findById(decoded.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const encryptedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+
+    user.password = encryptedPassword;
+
+    await user.save();
+
+    res.json({
+      message: "Senha redefinida com sucesso",
+    });
+  } catch (err) {
+    res.status(400).json({
+      error: "Token inválido ou expirado",
+    });
   }
 };

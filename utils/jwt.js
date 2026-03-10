@@ -62,3 +62,13 @@ export const JWTVerifyEmailToken = (token) => {
     });
   });
 };
+
+export const JWTSignPasswordReset = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_SECRET_KEY, {
+    expiresIn: "15m",
+  });
+};
+
+export const JWTVerifyPasswordReset = (token) => {
+  return jwt.verify(token, process.env.JWT_SECRET_KEY);
+};
