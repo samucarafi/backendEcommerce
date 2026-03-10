@@ -11,7 +11,17 @@ import { decryptCPF, encryptCPF } from "../../utils/cpfCrypto.js";
 
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
+function getFrontendUrl() {
+  const raw = process.env.FRONTEND_URL || "";
 
+  // separa por vírgula e pega a primeira
+  const firstUrl = raw.split(",")[0].trim();
+
+  // garante que termina sem /
+  return firstUrl.replace(/\/$/, "");
+}
+
+const frontend = getFrontendUrl();
 export const registerUserController = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -327,7 +337,7 @@ export const verifyEmailController = async (req, res) => {
     const { token } = req.query;
 
     if (!token) {
-      return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+      return res.redirect(`${frontend}/verified-error`);
     }
 
     const decoded = await JWTVerifyEmailToken(token);
@@ -335,20 +345,20 @@ export const verifyEmailController = async (req, res) => {
     const user = await User.findById(decoded.userId);
 
     if (!user) {
-      return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+      return res.redirect(`${frontend}/verified-error`);
     }
 
     if (user.verified) {
-      return res.redirect(`${process.env.FRONTEND_URL}/verified-success`);
+      return res.redirect(`${frontend}/verified-success`);
     }
 
     user.verified = true;
     await user.save();
 
-    return res.redirect(`${process.env.FRONTEND_URL}/verified-success`);
+    return res.redirect(`${frontend}/verified-success`);
   } catch (err) {
     console.error(err);
-    return res.redirect(`${process.env.FRONTEND_URL}/verified-error`);
+    return res.redirect(`${frontend}/verified-error`);
   }
 };
 

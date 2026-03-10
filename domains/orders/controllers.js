@@ -13,6 +13,18 @@ function maskCPF(cpf) {
   const numbers = cpf.replace(/\D/g, "");
   return numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
 }
+
+function getFrontendUrl() {
+  const raw = process.env.FRONTEND_URL || "";
+
+  // separa por vírgula e pega a primeira
+  const firstUrl = raw.split(",")[0].trim();
+
+  // garante que termina sem /
+  return firstUrl.replace(/\/$/, "");
+}
+
+const frontend = getFrontendUrl();
 export const getPaymentLink = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -148,9 +160,9 @@ export const createCheckoutController = async (req, res) => {
         },
 
         back_urls: {
-          success: process.env.FRONTEND_URL + "/success",
-          failure: process.env.FRONTEND_URL + "/failure",
-          pending: process.env.FRONTEND_URL + "/pending",
+          success: frontend + "/success",
+          failure: frontend + "/failure",
+          pending: frontend + "/pending",
         },
 
         notification_url: process.env.BACKEND_URL + "/payment/webhook",
