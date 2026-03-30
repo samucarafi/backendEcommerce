@@ -28,13 +28,29 @@ function getFrontendUrl() {
 }
 
 const frontend = getFrontendUrl();
+
 export const registerUserController = async (req, res) => {
   try {
     const { name, email, password } = req.body;
     function generateCoupon(name) {
-      const base = name.replace(/\s/g, "").toUpperCase();
+      // remove acentos
+      const normalize = (str) =>
+        str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      const cleaned = normalize(name)
+        .trim()
+        .split(" ")
+        .slice(0, 2) // pega no máximo 2 nomes
+        .join("");
+
+      const base = cleaned
+        .replace(/[^a-zA-Z]/g, "") // só letras
+        .toUpperCase()
+        .slice(0, 10); // limita tamanho
+
       const random = Math.floor(1000 + Math.random() * 9000);
-      return base + random;
+
+      return `${base}${random}`;
     }
     const normalizedEmail = email.toLowerCase().trim();
     const formattedName = formatName(name);
