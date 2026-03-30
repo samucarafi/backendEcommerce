@@ -13,6 +13,9 @@ import {
   updateMyProfileController,
   forgotPasswordController,
   resetPasswordController,
+  validateCouponController,
+  updateAffiliateController,
+  payAffiliateController,
 } from "./controller.js";
 import {
   adminMiddleware,
@@ -29,6 +32,7 @@ router.get("/auth/verify", verifyEmailController);
 router.post("/auth/resend-verification", resendVerificationController);
 router.post("/auth/forgot-password", forgotPasswordController);
 router.post("/auth/reset-password", resetPasswordController);
+router.post("/coupons/validate", validateCouponController);
 // Usuários (Admin)
 router.get(
   "/admin/users",
@@ -49,5 +53,17 @@ router.delete(
   adminMiddleware,
   deleteUserController,
 ); //colocar protect adminMiddleware depois de testar a rota
+router.put(
+  "/admin/affiliate/:userId",
+  authTokenMiddleware,
+  adminMiddleware,
+  updateAffiliateController,
+);
 
+router.post(
+  "/admin/affiliate/:userId/pay",
+  authTokenMiddleware,
+  adminMiddleware,
+  payAffiliateController,
+);
 export default router;

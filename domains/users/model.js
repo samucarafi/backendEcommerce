@@ -26,7 +26,43 @@ const UserSchema = new mongoose.Schema(
 
     cpfEncrypted: String, // 🔐 agora criptografado
     addresses: [addressSchema], // 📦 múltiplos endereços
+    usedCoupons: [
+      {
+        code: String,
+        usedAt: { type: Date, default: Date.now },
+      },
+    ],
+    affiliate: {
+      couponCode: {
+        type: String,
+        unique: true,
+      },
 
+      discountPercentage: {
+        type: Number,
+        default: 5,
+      },
+
+      commissionPercentage: {
+        type: Number,
+        default: 5,
+      },
+
+      totalEarned: {
+        type: Number,
+        default: 0, // histórico total (NUNCA zera)
+      },
+
+      pendingBalance: {
+        type: Number,
+        default: 0, // 💰 saldo atual a pagar
+      },
+
+      totalPaid: {
+        type: Number,
+        default: 0, // 💸 total já pago
+      },
+    },
     dateOfBirth: Date,
   },
   { timestamps: true },

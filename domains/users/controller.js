@@ -31,7 +31,11 @@ const frontend = getFrontendUrl();
 export const registerUserController = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
+    function generateCoupon(name) {
+      const base = name.replace(/\s/g, "").toUpperCase();
+      const random = Math.floor(1000 + Math.random() * 9000);
+      return base + random;
+    }
     const normalizedEmail = email.toLowerCase().trim();
     const formattedName = formatName(name);
     if (!email || !password) {
@@ -44,11 +48,15 @@ export const registerUserController = async (req, res) => {
     }
 
     const encryptedPassword = bcrypt.hashSync(password, bcryptSalt);
+    const couponCode = generateCoupon(name);
 
     const userDoc = await User.create({
       name: formattedName,
       email: normalizedEmail,
       password: encryptedPassword,
+      affiliate: {
+        couponCode,
+      },
       role: "user",
       verified: false,
     });
@@ -100,6 +108,7 @@ export const getProfileController = async (req, res) => {
         phone: userDoc.phone,
         dateOfBirth: userDoc.dateOfBirth,
         cpfMasked,
+        affiliate: userDoc.affiliate,
         role: userDoc.role,
       },
     });
@@ -107,7 +116,78 @@ export const getProfileController = async (req, res) => {
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
+export const payAffiliateController = async (req, res) => {
+  try {
+    const { userId } = req.params;
 
+    const user = await User.findById(userId);
+
+    if (!user || !user.affiliate) {
+      return res.status(404).json({ error: "Afiliado não encontrado" });
+    }
+
+    const amount = user.affiliate.pendingBalance || 0;
+
+    if (amount <= 0) {
+      return res.status(400).json({ error: "Nada a pagar" });
+    }
+
+    user.affiliate.totalPaid += amount;
+    user.affiliate.pendingBalance = 0;
+
+    await user.save();
+
+    res.json({
+      message: "Pagamento registrado com sucesso",
+      paid: amount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao pagar afiliado" });
+  }
+};
+export const updateAffiliateController = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { couponCode, discountPercentage, commissionPercentage } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    // evita duplicar cupom
+    if (couponCode) {
+      const exists = await User.findOne({
+        "affiliate.couponCode": couponCode.toUpperCase(),
+        _id: { $ne: userId },
+      });
+
+      if (exists) {
+        return res.status(400).json({ error: "Cupom já existe" });
+      }
+
+      user.affiliate.couponCode = couponCode.toUpperCase();
+    }
+
+    if (discountPercentage !== undefined) {
+      user.affiliate.discountPercentage = Number(discountPercentage);
+    }
+
+    if (commissionPercentage !== undefined) {
+      user.affiliate.commissionPercentage = Number(commissionPercentage);
+    }
+
+    await user.save();
+
+    res.json({
+      message: "Afiliado atualizado",
+      affiliate: user.affiliate,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao atualizar afiliado" });
+  }
+};
 //ok
 export const loginController = async (req, res) => {
   try {
@@ -151,6 +231,7 @@ export const loginController = async (req, res) => {
       user: {
         name: user.name,
         email: user.email,
+        affiliate: user.affiliate,
         addresses: user.addresses,
         phone: user.phone,
         dateOfBirth: user.dateOfBirth,
@@ -162,7 +243,35 @@ export const loginController = async (req, res) => {
     return res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
+export const validateCouponController = async (req, res) => {
+  try {
+    const { code } = req.body;
 
+    if (!code) {
+      return res.status(400).json({ error: "Cupom não informado" });
+    }
+
+    const user = await User.findOne({
+      "affiliate.couponCode": code.toUpperCase(),
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Cupom inválido" });
+    }
+
+    return res.json({
+      coupon: {
+        code: user.affiliate.couponCode,
+        type: "percentage",
+        value: user.affiliate.discountPercentage,
+        affiliateUserId: user._id,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao validar cupom" });
+  }
+};
 export const getUsersController = async (req, res) => {
   try {
     const users = await User.find()

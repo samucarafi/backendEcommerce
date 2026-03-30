@@ -53,13 +53,15 @@ export const getPaymentLink = async (req, res) => {
 
 export const createCheckoutController = async (req, res) => {
   try {
-    const { items, customer, shippingAddress, shipping } = req.body;
+    const { items, customer, shippingAddress, shipping, coupon } = req.body;
     const user = await User.findById(req.user._id);
+
     let cpfToUse = "";
 
     if (!customer?.cpf) {
       return res.status(400).json({ error: "CPF obrigatório" });
     }
+
     if (customer.cpf === "USE_SAVED_CPF") {
       if (!user.cpfEncrypted) {
         return res.status(400).json({ error: "CPF não cadastrado" });
@@ -68,7 +70,6 @@ export const createCheckoutController = async (req, res) => {
       cpfToUse = decryptCPF(user.cpfEncrypted);
     } else {
       const cleanCpf = customer.cpf.replace(/\D/g, "");
-
       cpfToUse = cleanCpf;
 
       if (!user.cpfEncrypted) {
@@ -76,7 +77,6 @@ export const createCheckoutController = async (req, res) => {
       }
     }
 
-    // salvar endereço se ainda não existir
     const alreadyExists = user.addresses.some(
       (addr) =>
         addr.cep === shippingAddress.cep &&
@@ -92,27 +92,23 @@ export const createCheckoutController = async (req, res) => {
     const validatedItems = [];
 
     for (const item of items) {
-      // ignorar descontos e frete
-      if (item.type && item.type !== "product") {
-        validatedItems.push(item);
-        continue;
-      }
+      if (item.type && item.type !== "product") continue;
 
       const product = await Product.findById(item.productId);
 
       if (!product) {
-        console.error("Produto não encontrado:", item.productId);
         return res.status(404).json({ error: "Produto não encontrado" });
       }
 
-      if (product.stock < item.quantity)
+      if (product.stock < item.quantity) {
         return res.status(400).json({ error: "Estoque insuficiente" });
+      }
 
       validatedItems.push({
         productId: product._id,
         title: product.name,
-        quantity: item.quantity,
-        unit_price: product.price,
+        quantity: Number(item.quantity),
+        unit_price: Number(product.price),
         type: "product",
       });
     }
@@ -120,25 +116,152 @@ export const createCheckoutController = async (req, res) => {
     const orderId = uuidv4();
 
     const itemsTotal = validatedItems.reduce(
-      (s, i) => s + i.unit_price * i.quantity,
+      (sum, item) => sum + item.unit_price * item.quantity,
       0,
     );
-    const itemsMp = validatedItems.map((i) => ({
-      title: i.title,
-      quantity: i.quantity,
-      currency_id: "BRL",
-      unit_price: i.unit_price,
-    }));
 
-    if (shipping > 0) {
+    let finalShipping = Number(shipping) || 0;
+    let itemsDiscount = 0;
+    let shippingDiscount = 0;
+    let affiliateData = null;
+
+    // Cupom pode vir como objeto ou string
+    const couponCode =
+      typeof coupon === "string"
+        ? coupon.trim().toUpperCase()
+        : coupon?.code?.trim()?.toUpperCase() || null;
+    if (couponCode) {
+      const alreadyUsed = user.usedCoupons?.some((c) => c.code === couponCode);
+
+      if (alreadyUsed) {
+        return res.status(400).json({
+          error: "Você já utilizou este cupom",
+        });
+      }
+    }
+
+    // =========================
+    // CUPOM DE AFILIADO
+    // =========================
+    if (couponCode) {
+      const affiliateUser = await User.findOne({
+        "affiliate.couponCode": couponCode,
+      });
+      if (couponCode) {
+        const affiliateUser = await User.findOne({
+          "affiliate.couponCode": couponCode,
+        });
+
+        // 🚫 impedir usar próprio cupom
+        if (affiliateUser && affiliateUser._id.equals(req.user._id)) {
+          return res.status(400).json({
+            error: "Você não pode usar seu próprio cupom",
+          });
+        }
+      }
+      if (affiliateUser) {
+        const percentage = Number(
+          affiliateUser.affiliate.discountPercentage || 0,
+        );
+
+        if (percentage > 0) {
+          itemsDiscount = Number(((itemsTotal * percentage) / 100).toFixed(2));
+        }
+
+        affiliateData = {
+          userId: affiliateUser._id,
+          couponCode,
+          discountGiven: itemsDiscount,
+          commissionPercentage: affiliateUser.affiliate.commissionPercentage,
+          commissionValue: Number(
+            (
+              (itemsTotal * affiliateUser.affiliate.commissionPercentage) /
+              100
+            ).toFixed(2),
+          ),
+          status: "pending",
+        };
+      }
+    }
+
+    // =========================
+    // CUPOM NORMAL
+    // =========================
+    if (!affiliateData && coupon && typeof coupon === "object") {
+      if (coupon.type === "percentage") {
+        itemsDiscount = Number(
+          ((itemsTotal * Number(coupon.value || 0)) / 100).toFixed(2),
+        );
+      }
+
+      if (coupon.type === "fixed") {
+        itemsDiscount = Math.min(Number(coupon.value || 0), itemsTotal);
+        itemsDiscount = Number(itemsDiscount.toFixed(2));
+      }
+
+      if (coupon.type === "shipping") {
+        shippingDiscount = Math.min(Number(coupon.value || 0), finalShipping);
+        shippingDiscount = Number(shippingDiscount.toFixed(2));
+        finalShipping = Number((finalShipping - shippingDiscount).toFixed(2));
+      }
+    }
+
+    // garante limites
+    itemsDiscount = Math.min(itemsDiscount, itemsTotal);
+    itemsDiscount = Number(itemsDiscount.toFixed(2));
+
+    // =========================
+    // DISTRIBUI DESCONTO NOS ITENS
+    // =========================
+    let itemsMp = [];
+
+    if (itemsTotal > 0) {
+      let remainingDiscount = itemsDiscount;
+
+      itemsMp = validatedItems.map((item, index) => {
+        const itemSubtotal = item.unit_price * item.quantity;
+
+        let itemDiscount = 0;
+
+        if (itemsDiscount > 0) {
+          if (index === validatedItems.length - 1) {
+            itemDiscount = remainingDiscount;
+          } else {
+            itemDiscount = Number(
+              ((itemSubtotal / itemsTotal) * itemsDiscount).toFixed(2),
+            );
+            remainingDiscount = Number(
+              (remainingDiscount - itemDiscount).toFixed(2),
+            );
+          }
+        }
+
+        const finalSubtotal = Math.max(0, itemSubtotal - itemDiscount);
+        const finalUnitPrice = Number(
+          (finalSubtotal / item.quantity).toFixed(2),
+        );
+
+        return {
+          title: item.title,
+          quantity: item.quantity,
+          currency_id: "BRL",
+          unit_price: finalUnitPrice,
+        };
+      });
+    }
+
+    if (finalShipping > 0) {
       itemsMp.push({
         title: "Frete",
         quantity: 1,
         currency_id: "BRL",
-        unit_price: Number(shipping),
+        unit_price: Number(finalShipping.toFixed(2)),
       });
     }
-    const total = itemsTotal + shipping;
+
+    const total = Number(
+      (itemsTotal + finalShipping - itemsDiscount).toFixed(2),
+    );
 
     const preference = new Preference(client);
 
@@ -146,7 +269,6 @@ export const createCheckoutController = async (req, res) => {
       body: {
         items: itemsMp,
         external_reference: orderId,
-
         payer: {
           name: customer.name,
           email: customer.email,
@@ -155,15 +277,12 @@ export const createCheckoutController = async (req, res) => {
             number: cpfToUse,
           },
         },
-
         back_urls: {
           success: frontend + "/success",
           failure: frontend + "/failure",
           pending: frontend + "/pending",
         },
-
         notification_url: process.env.BACKEND_URL + "/payment/webhook",
-
         auto_return: "approved",
       },
     });
@@ -172,10 +291,30 @@ export const createCheckoutController = async (req, res) => {
       orderId,
       userId: req.user?._id,
       customer,
+      affiliate: affiliateData,
       items: validatedItems,
+      coupon: couponCode
+        ? {
+            code: couponCode,
+            type: affiliateData ? "affiliate" : coupon?.type || null,
+            value: affiliateData
+              ? affiliateData.discountGiven
+              : Number(coupon?.value || 0),
+            applied: !!(itemsDiscount > 0 || shippingDiscount > 0),
+          }
+        : {
+            code: null,
+            type: null,
+            value: 0,
+            applied: false,
+          },
       totals: {
-        items: itemsTotal,
-        shipping,
+        items: Number(itemsTotal.toFixed(2)),
+        subtotal: Number(itemsTotal.toFixed(2)),
+        discount: Number(itemsDiscount.toFixed(2)),
+        originalShipping: Number((Number(shipping) || 0).toFixed(2)),
+        shippingDiscount: Number(shippingDiscount.toFixed(2)),
+        shipping: Number(finalShipping.toFixed(2)),
         total,
       },
       shippingAddress,
@@ -230,6 +369,17 @@ export const webhookController = async (req, res) => {
 
     // baixa estoque apenas 1x
     if (status === "approved" && order.payment.status !== "approved") {
+      if (order.coupon?.code && order.userId) {
+        await User.findByIdAndUpdate(order.userId, {
+          $addToSet: {
+            usedCoupons: {
+              code: order.coupon.code,
+              usedAt: new Date(),
+            },
+          },
+        });
+      }
+      // baixa estoque
       for (const item of order.items) {
         if (item.type !== "product") continue;
 
@@ -237,6 +387,24 @@ export const webhookController = async (req, res) => {
           { _id: item.productId, stock: { $gte: item.quantity } },
           { $inc: { stock: -item.quantity } },
         );
+      }
+
+      // =============================
+      // COMISSÃO DE AFILIADO
+      // =============================
+      if (order.affiliate?.userId && order.affiliate.status === "pending") {
+        const affiliateUser = await User.findById(order.affiliate.userId);
+
+        if (affiliateUser) {
+          affiliateUser.affiliate.pendingBalance +=
+            order.affiliate.commissionValue;
+
+          await affiliateUser.save();
+
+          order.affiliate.status = "approved";
+
+          console.log("Comissão aprovada para afiliado:", affiliateUser.email);
+        }
       }
     }
 
