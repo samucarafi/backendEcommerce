@@ -16,6 +16,7 @@ import {
   validateCouponController,
   updateAffiliateController,
   payAffiliateController,
+  googleLoginController,
 } from "./controller.js";
 import {
   adminMiddleware,
@@ -26,6 +27,7 @@ const router = Router();
 // Autenticação
 router.post("/auth/register", registerUserController);
 router.post("/auth/login", loginController);
+router.post("/auth/google", googleLoginController);
 router.get("/auth/profile", authTokenMiddleware, getProfileController);
 router.put("/auth/profile", authTokenMiddleware, updateMyProfileController);
 router.get("/auth/verify", verifyEmailController);

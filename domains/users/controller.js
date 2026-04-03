@@ -1,8 +1,8 @@
 import User from "./model.js";
 import bcrypt from "bcryptjs";
 import "dotenv/config.js";
-import { JWTSign } from "../../utils/jwt.js";
 import {
+  JWTSign,
   JWTSignEmailVerification,
   JWTVerifyEmailToken,
   JWTSignPasswordReset,
@@ -14,9 +14,11 @@ import {
 } from "../../services/emailService.js";
 import { decryptCPF, encryptCPF } from "../../utils/cpfCrypto.js";
 import { formatName } from "../../utils/formatName.js";
+import { OAuth2Client } from "google-auth-library";
 
 //create a hash for bcrypt
 const bcryptSalt = bcrypt.genSaltSync();
+
 function getFrontendUrl() {
   const raw = process.env.FRONTEND_URL || "";
 
@@ -28,6 +30,90 @@ function getFrontendUrl() {
 }
 
 const frontend = getFrontendUrl();
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLoginController = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    let user = await User.findOne({ email });
+
+    function generateCoupon(name) {
+      const normalize = (str) =>
+        str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      const cleaned = normalize(name).trim().split(" ").slice(0, 2).join("");
+
+      const base = cleaned
+        .replace(/[^a-zA-Z]/g, "")
+        .toUpperCase()
+        .slice(0, 10);
+
+      const random = Math.floor(1000 + Math.random() * 9000);
+
+      return `${base}${random}`;
+    }
+
+    if (!user) {
+      user = await User.create({
+        name,
+        email,
+        password: null,
+        verified: true,
+        affiliate: {
+          couponCode: generateCoupon(name),
+        },
+        role: "user",
+      });
+    }
+
+    // 🔐 TOKEN (AGORA COM AWAIT)
+    const tokenJWT = await JWTSign({
+      _id: user._id,
+      name: user.name,
+      role: user.role,
+    });
+
+    // 🔒 CPF MASK (igual ao login normal)
+    let cpfMasked = "";
+
+    if (user.cpfEncrypted) {
+      const decrypted = decryptCPF(user.cpfEncrypted);
+      const numbers = decrypted.replace(/\D/g, "");
+      cpfMasked = numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
+    }
+
+    // ✅ RETORNO PADRÃO IGUAL
+    return res.json({
+      message: "Login bem-sucedido",
+      token: tokenJWT,
+      expiresIn: "2h",
+      user: {
+        hasPassword: !!user.password,
+        name: user.name,
+        email: user.email,
+        affiliate: user.affiliate,
+        addresses: user.addresses,
+        phone: user.phone,
+        dateOfBirth: user.dateOfBirth,
+        cpfMasked,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(401).json({ error: "Token inválido" });
+  }
+};
 
 export const registerUserController = async (req, res) => {
   try {
@@ -118,6 +204,7 @@ export const getProfileController = async (req, res) => {
     res.status(200).json({
       message: "Informações de perfil enviadas com sucesso",
       user: {
+        hasPassword: !!userDoc.password,
         name: userDoc.name,
         email: userDoc.email,
         addresses: userDoc.addresses,
@@ -245,6 +332,7 @@ export const loginController = async (req, res) => {
       token, // 👈 envie o token
       expiresIn: "2h",
       user: {
+        hasPassword: !!user.password,
         name: user.name,
         email: user.email,
         affiliate: user.affiliate,
@@ -307,24 +395,69 @@ export const getUsersController = async (req, res) => {
 export const changePasswordController = async (req, res) => {
   try {
     const { currentPassword, newPassword, confirmNewPassword } = req.body;
+
     const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
-    const passwordCorrect = bcrypt.compareSync(currentPassword, user.password);
-    if (!passwordCorrect) {
-      return res.status(401).json({ error: "Senha atual incorreta" });
+
+    /* =========================
+       VALIDA NOVA SENHA
+    ========================== */
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        error: "A nova senha deve ter pelo menos 6 caracteres",
+      });
     }
 
     if (newPassword !== confirmNewPassword) {
-      return res.status(400).json({ error: "As novas senhas não coincidem" });
+      return res.status(400).json({
+        error: "As novas senhas não coincidem",
+      });
     }
+
+    /* =========================
+       CASO 1: USUÁRIO COM SENHA
+    ========================== */
+    if (user.password) {
+      if (!currentPassword) {
+        return res.status(400).json({
+          error: "Informe a senha atual",
+        });
+      }
+
+      const passwordCorrect = bcrypt.compareSync(
+        currentPassword,
+        user.password,
+      );
+
+      if (!passwordCorrect) {
+        return res.status(401).json({
+          error: "Senha atual incorreta",
+        });
+      }
+    }
+
+    /* =========================
+       CASO 2: USUÁRIO GOOGLE
+       (sem senha ainda)
+    ========================== */
+    // não precisa validar senha atual 👍
+
     const encryptedNewPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+
     user.password = encryptedNewPassword;
+
     await user.save();
-    res.json({ message: "Senha alterada com sucesso" });
+
+    return res.json({
+      message: user.password
+        ? "Senha alterada com sucesso"
+        : "Senha criada com sucesso",
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
@@ -450,6 +583,7 @@ export const updateMyProfileController = async (req, res) => {
     res.json({
       message: "Perfil atualizado com sucesso",
       user: {
+        hasPassword: !!user.password,
         _id: user._id,
         name: user.name,
         email: user.email,
