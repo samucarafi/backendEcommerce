@@ -402,6 +402,8 @@ export const changePasswordController = async (req, res) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
+    const hadPassword = !!user.password;
+
     /* =========================
        VALIDA NOVA SENHA
     ========================== */
@@ -418,9 +420,9 @@ export const changePasswordController = async (req, res) => {
     }
 
     /* =========================
-       CASO 1: USUÁRIO COM SENHA
+       SE JÁ TINHA SENHA
     ========================== */
-    if (user.password) {
+    if (hadPassword) {
       if (!currentPassword) {
         return res.status(400).json({
           error: "Informe a senha atual",
@@ -440,19 +442,15 @@ export const changePasswordController = async (req, res) => {
     }
 
     /* =========================
-       CASO 2: USUÁRIO GOOGLE
-       (sem senha ainda)
+       SALVAR NOVA SENHA
     ========================== */
-    // não precisa validar senha atual 👍
-
     const encryptedNewPassword = bcrypt.hashSync(newPassword, bcryptSalt);
-
     user.password = encryptedNewPassword;
 
     await user.save();
 
     return res.json({
-      message: user.password
+      message: hadPassword
         ? "Senha alterada com sucesso"
         : "Senha criada com sucesso",
     });
