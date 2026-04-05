@@ -34,7 +34,7 @@ router.get("/auth/verify", verifyEmailController);
 router.post("/auth/resend-verification", resendVerificationController);
 router.post("/auth/forgot-password", forgotPasswordController);
 router.post("/auth/reset-password", resetPasswordController);
-router.post("/coupons/validate", validateCouponController);
+router.post("/coupons/validate",authTokenMiddleware, validateCouponController);
 // Usuários (Admin)
 router.get(
   "/admin/users",

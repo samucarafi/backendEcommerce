@@ -355,20 +355,40 @@ export const validateCouponController = async (req, res) => {
       return res.status(400).json({ error: "Cupom não informado" });
     }
 
-    const user = await User.findOne({
-      "affiliate.couponCode": code.toUpperCase(),
+    const couponCode = code.trim().toUpperCase();
+
+    const user = await User.findById(req.user._id);
+
+    // 🔴 VERIFICA SE JÁ USOU
+    const alreadyUsed = user.usedCoupons?.some((c) => c.code === couponCode);
+
+    if (alreadyUsed) {
+      return res.status(400).json({
+        error: "Você já utilizou este cupom",
+      });
+    }
+
+    const affiliateUser = await User.findOne({
+      "affiliate.couponCode": couponCode,
     });
 
-    if (!user) {
+    if (!affiliateUser) {
       return res.status(404).json({ error: "Cupom inválido" });
+    }
+
+    // 🔴 BLOQUEIA USAR PRÓPRIO CUPOM
+    if (affiliateUser._id.equals(req.user._id)) {
+      return res.status(400).json({
+        error: "Você não pode usar seu próprio cupom",
+      });
     }
 
     return res.json({
       coupon: {
-        code: user.affiliate.couponCode,
+        code: affiliateUser.affiliate.couponCode,
         type: "percentage",
-        value: user.affiliate.discountPercentage,
-        affiliateUserId: user._id,
+        value: affiliateUser.affiliate.discountPercentage,
+        affiliateUserId: affiliateUser._id,
       },
     });
   } catch (err) {

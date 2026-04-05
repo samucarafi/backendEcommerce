@@ -17,7 +17,7 @@ app.use(
     credentials: true,
     origin: function (origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, origin);
+        callback(null, true);
       } else {
         callback(new Error("CORS não permitido"));
       }
