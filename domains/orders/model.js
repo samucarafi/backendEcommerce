@@ -81,6 +81,11 @@ const orderSchema = new mongoose.Schema({
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+    pix: {
+      qr_code: String,
+      qr_code_base64: String,
+      ticket_url: String,
+    },
     mpPaymentId: String,
     mpPreferenceId: String,
   },

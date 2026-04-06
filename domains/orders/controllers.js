@@ -263,29 +263,30 @@ export const createCheckoutController = async (req, res) => {
       (itemsTotal + finalShipping - itemsDiscount).toFixed(2),
     );
 
-    const preference = new Preference(client);
+    const paymentClient = new Payment(client);
 
-    const mpRes = await preference.create({
+    const payment = await paymentClient.create({
       body: {
-        items: itemsMp,
+        transaction_amount: total,
+        description: "Compra Royal Parfums",
+
+        payment_method_id: "pix",
+
         external_reference: orderId,
+
         payer: {
-          name: customer.name,
           email: customer.email,
+          first_name: customer.name,
           identification: {
             type: "CPF",
             number: cpfToUse,
           },
         },
-        back_urls: {
-          success: frontend + "/success",
-          failure: frontend + "/failure",
-          pending: frontend + "/pending",
-        },
+
         notification_url: process.env.BACKEND_URL + "/payment/webhook",
-        auto_return: "approved",
       },
     });
+    const pixData = payment.point_of_interaction.transaction_data;
 
     await Order.create({
       orderId,
@@ -321,11 +322,21 @@ export const createCheckoutController = async (req, res) => {
       payment: {
         method: "mercadopago",
         status: "pending",
-        mpPreferenceId: mpRes.id,
+        mpPaymentId: payment.id,
+        pix: {
+          qr_code: pixData.qr_code,
+          qr_code_base64: pixData.qr_code_base64,
+          ticket_url: pixData.ticket_url,
+        },
       },
     });
 
-    res.json({ init_point: mpRes.init_point });
+    res.json({
+      orderId,
+      qr_code: pixData.qr_code,
+      qr_code_base64: pixData.qr_code_base64,
+      ticket_url: pixData.ticket_url,
+    });
   } catch (err) {
     console.error("AUTH ERROR:", err);
     res.status(500).json({ error: "Erro ao criar checkout" });
@@ -417,6 +428,62 @@ export const webhookController = async (req, res) => {
   } catch (err) {
     console.error("WEBHOOK ERROR:", err);
     res.sendStatus(200);
+  }
+};
+
+export const payOrderController = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    if (order.payment.status === "approved") {
+      return res.status(400).json({ error: "Pedido já pago" });
+    }
+
+    const total = order.totals.total;
+
+    const paymentClient = new Payment(client);
+
+    const payment = await paymentClient.create({
+      body: {
+        transaction_amount: total,
+        description: "Pagamento de pedido existente",
+        payment_method_id: "pix",
+        external_reference: order.orderId,
+        payer: {
+          email: order.customer.email,
+          first_name: order.customer.name,
+          identification: {
+            type: "CPF",
+            number: order.customer.cpf,
+          },
+        },
+        notification_url: process.env.BACKEND_URL + "/payment/webhook",
+      },
+    });
+
+    const pixData = payment.point_of_interaction.transaction_data;
+
+    order.payment.mpPaymentId = payment.id;
+    order.payment.status = "pending";
+    order.payment.pix = {
+      qr_code: pixData.qr_code,
+      qr_code_base64: pixData.qr_code_base64,
+      ticket_url: pixData.ticket_url,
+    };
+    await order.save();
+
+    res.json({
+      qr_code: pixData.qr_code,
+      qr_code_base64: pixData.qr_code_base64,
+      ticket_url: pixData.ticket_url,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao gerar pagamento" });
   }
 };
 
