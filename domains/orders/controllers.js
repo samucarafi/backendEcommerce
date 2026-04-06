@@ -378,6 +378,14 @@ export const webhookController = async (req, res) => {
 
     const status = payment.status || "unknown";
 
+    if (status === "cancelled") {
+      order.payment.status = "rejected"; // mapeia pro seu enum
+      order.payment.mpPaymentId = paymentId;
+
+      await order.save();
+
+      return res.sendStatus(200);
+    }
     // baixa estoque apenas 1x
     if (status === "approved" && order.payment.status !== "approved") {
       if (order.coupon?.code && order.userId) {
