@@ -12,11 +12,7 @@ export const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
-app.use((req, res, next) => {
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-  res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
-  next();
-});
+
 const allowedOrigins = process.env.FRONTEND_URL.split(",").map((origin) =>
   origin.trim(),
 );
