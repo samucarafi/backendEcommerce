@@ -9,18 +9,26 @@ export const __filename = fileURLToPath(import.meta.url);
 export const __dirname = dirname(__filename);
 
 export const app = express();
-const allowedOrigins = process.env.FRONTEND_URL.split(",");
+app.options("*", cors());
 app.use(express.json());
 app.use(cookieParser());
+const allowedOrigins = process.env.FRONTEND_URL.split(",").map((origin) =>
+  origin.trim(),
+);
+
 app.use(
   cors({
     credentials: true,
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS não permitido"));
+      // permite requests sem origin (Postman, server-to-server)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
       }
+
+      console.log("Origin bloqueada:", origin); // DEBUG
+      return callback(new Error("CORS não permitido"));
     },
   }),
 );
