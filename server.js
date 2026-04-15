@@ -7,7 +7,11 @@ import { dirname } from "path";
 
 export const __filename = fileURLToPath(import.meta.url);
 export const __dirname = dirname(__filename);
-
+app.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
+  next();
+});
 export const app = express();
 app.use(express.json());
 app.use(cookieParser());
