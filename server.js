@@ -9,7 +9,6 @@ export const __filename = fileURLToPath(import.meta.url);
 export const __dirname = dirname(__filename);
 
 export const app = express();
-app.options("*", cors());
 app.use(express.json());
 app.use(cookieParser());
 const allowedOrigins = process.env.FRONTEND_URL.split(",").map((origin) =>
