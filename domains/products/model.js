@@ -14,6 +14,7 @@ const ProductSchema = new mongoose.Schema(
       enum: [
         "Floral",
         "Amadeirado",
+        "Frutado",
         "Oriental",
         "Cítrico",
         "Aromático",
