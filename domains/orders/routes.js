@@ -1,7 +1,6 @@
 import express from "express";
 import {
   createCheckoutController,
-  createOrder,
   getAllOrders,
   getMyOrders,
   getPaymentLink,
@@ -15,7 +14,6 @@ import {
 
 const router = express.Router();
 
-router.post("/orders", authTokenMiddleware, createOrder);
 router.get("/orders", authTokenMiddleware, getMyOrders);
 router.get("/orders/:id/pay", authTokenMiddleware, getPaymentLink);
 router.post("/checkout", authTokenMiddleware, createCheckoutController);
