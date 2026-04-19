@@ -1,108 +1,356 @@
+/**
+ * modules/orders/controller.js
+ *
+ * Regras de negócio de cupom:
+ *  - "PRIMEIRACOMPRA" → uso único por CPF (verificado via cpfHash)
+ *  - Cupons de afiliado → sem restrição de reutilização por CPF;
+ *    apenas o próprio dono do cupom não pode usá-lo.
+ */
+
 import Order from "./model.js";
 import Product from "../products/model.js";
+import User from "../users/model.js";
 import { Preference, Payment } from "mercadopago";
 import { v4 as uuidv4 } from "uuid";
 import { mpClient as client } from "../../config/mercadopago.js";
-import User from "../users/model.js";
-import { encryptCPF } from "../../utils/cpfCrypto.js";
-import { decryptCPF } from "../../utils/cpfCrypto.js";
+import {
+  encryptCPF,
+  decryptCPF,
+  hashCPF,
+  maskCPF,
+} from "../../utils/cpfCrypto.js";
 
-function maskCPF(cpf) {
-  if (!cpf) return null;
+/* ─────────────────────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────────────────── */
 
-  const numbers = cpf.replace(/\D/g, "");
-  return numbers.replace(/^(\d{3})\d{6}(\d{2})$/, "$1******$2");
-}
+const FIRST_PURCHASE_COUPON = "PRIMEIRACOMPRA";
 
 function getFrontendUrl() {
-  const raw = process.env.FRONTEND_URL || "";
-
-  // separa por vírgula e pega a primeira
-  const firstUrl = raw.split(",")[0].trim();
-
-  // garante que termina sem /
-  return firstUrl.replace(/\/$/, "");
+  return (process.env.FRONTEND_URL || "")
+    .split(",")[0]
+    .trim()
+    .replace(/\/$/, "");
 }
 
-const frontend = getFrontendUrl();
+/**
+ * Resolve o CPF real a partir do body + usuário salvo no DB.
+ * Retorna { cpfRaw, cpfHash } ou lança erro com mensagem.
+ */
+async function resolveCpf(customerCpf, user) {
+  if (!customerCpf) {
+    throw { status: 400, message: "CPF obrigatório" };
+  }
 
+  if (customerCpf === "USE_SAVED_CPF") {
+    if (!user.cpfEncrypted) {
+      throw { status: 400, message: "CPF não cadastrado. Informe o CPF." };
+    }
+    const raw = decryptCPF(user.cpfEncrypted);
+    return { cpfRaw: raw, cpfHash: hashCPF(raw) };
+  }
+
+  const raw = customerCpf.replace(/\D/g, "");
+  return { cpfRaw: raw, cpfHash: hashCPF(raw) };
+}
+
+/**
+ * Persiste cpfEncrypted e cpfHash no usuário, se ainda não existirem.
+ */
+async function saveCpfToUser(user, cpfRaw) {
+  if (!user.cpfEncrypted) {
+    user.cpfEncrypted = encryptCPF(cpfRaw);
+    user.cpfHash = hashCPF(cpfRaw);
+  }
+}
+
+/**
+ * Salva endereço se ainda não existir.
+ */
+function maybeSaveAddress(user, shippingAddress) {
+  const exists = user.addresses.some(
+    (a) => a.cep === shippingAddress.cep && a.number === shippingAddress.number,
+  );
+  if (!exists) user.addresses.push(shippingAddress);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Validação de cupom
+───────────────────────────────────────────────────────── */
+
+/**
+ * Valida e calcula descontos do cupom.
+ *
+ * Retorna:
+ *  {
+ *    itemsDiscount,
+ *    shippingDiscount,
+ *    finalShipping,
+ *    affiliateData,       // null se não for afiliado
+ *    couponMeta,          // objeto para salvar no pedido
+ *  }
+ */
+async function processCoupon({
+  couponInput, // valor enviado no body (string ou objeto)
+  userId,
+  cpfHash,
+  itemsTotal,
+  originalShipping,
+}) {
+  // Normaliza para string ou null
+  const couponCode =
+    typeof couponInput === "string"
+      ? couponInput.trim().toUpperCase()
+      : (couponInput?.code?.trim?.()?.toUpperCase?.() ?? null);
+
+  let itemsDiscount = 0;
+  let shippingDiscount = 0;
+  let finalShipping = originalShipping;
+  let affiliateData = null;
+  let couponMeta = {
+    code: null,
+    type: null,
+    value: 0,
+    applied: false,
+    cpfHash: null,
+  };
+
+  if (!couponCode)
+    return {
+      itemsDiscount,
+      shippingDiscount,
+      finalShipping,
+      affiliateData,
+      couponMeta,
+    };
+
+  // ── PRIMEIRACOMPRA ──────────────────────────────────────
+  if (couponCode === FIRST_PURCHASE_COUPON) {
+    // Verifica se CPF já usou esse cupom (em qualquer conta)
+    const cpfAlreadyUsed = await Order.findOne({
+      "coupon.code": FIRST_PURCHASE_COUPON,
+      "coupon.cpfHash": cpfHash,
+      "payment.status": "approved",
+    }).lean();
+
+    if (cpfAlreadyUsed) {
+      throw {
+        status: 400,
+        message: "O cupom PRIMEIRACOMPRA já foi utilizado com este CPF.",
+      };
+    }
+
+    // Desconto fixo de 10% (ajuste conforme sua regra)
+    const pct = 10;
+    itemsDiscount = Number(((itemsTotal * pct) / 100).toFixed(2));
+
+    couponMeta = {
+      code: FIRST_PURCHASE_COUPON,
+      type: "percentage",
+      value: pct,
+      applied: true,
+      cpfHash,
+    };
+
+    return {
+      itemsDiscount,
+      shippingDiscount,
+      finalShipping,
+      affiliateData,
+      couponMeta,
+    };
+  }
+
+  // ── CUPOM DE AFILIADO ───────────────────────────────────
+  const affiliateUser = await User.findOne({
+    "affiliate.couponCode": couponCode,
+  });
+
+  if (affiliateUser) {
+    // Dono não pode usar próprio cupom
+    if (affiliateUser._id.equals(userId)) {
+      throw {
+        status: 400,
+        message: "Você não pode usar seu próprio cupom de afiliado.",
+      };
+    }
+
+    const pct = Number(affiliateUser.affiliate.discountPercentage || 0);
+    if (pct > 0) {
+      itemsDiscount = Number(((itemsTotal * pct) / 100).toFixed(2));
+    }
+
+    affiliateData = {
+      userId: affiliateUser._id,
+      couponCode,
+      discountGiven: itemsDiscount,
+      commissionPercentage: affiliateUser.affiliate.commissionPercentage,
+      commissionValue: Number(
+        (
+          (itemsTotal * affiliateUser.affiliate.commissionPercentage) /
+          100
+        ).toFixed(2),
+      ),
+      status: "pending",
+    };
+
+    couponMeta = {
+      code: couponCode,
+      type: "affiliate",
+      value: itemsDiscount,
+      applied: true,
+      cpfHash: null, // afiliado não bloqueia por CPF
+    };
+
+    return {
+      itemsDiscount,
+      shippingDiscount,
+      finalShipping,
+      affiliateData,
+      couponMeta,
+    };
+  }
+
+  // ── CUPOM NORMAL (percentage / fixed / shipping) ────────
+  if (couponInput && typeof couponInput === "object") {
+    const { type, value } = couponInput;
+
+    if (type === "percentage") {
+      itemsDiscount = Number(
+        ((itemsTotal * Number(value || 0)) / 100).toFixed(2),
+      );
+    }
+    if (type === "fixed") {
+      itemsDiscount = Number(
+        Math.min(Number(value || 0), itemsTotal).toFixed(2),
+      );
+    }
+    if (type === "shipping") {
+      shippingDiscount = Number(
+        Math.min(Number(value || 0), finalShipping).toFixed(2),
+      );
+      finalShipping = Number((finalShipping - shippingDiscount).toFixed(2));
+    }
+
+    couponMeta = {
+      code: couponCode,
+      type,
+      value: Number(value || 0),
+      applied: itemsDiscount > 0 || shippingDiscount > 0,
+      cpfHash: null,
+    };
+  }
+
+  return {
+    itemsDiscount,
+    shippingDiscount,
+    finalShipping,
+    affiliateData,
+    couponMeta,
+  };
+}
+
+/* ─────────────────────────────────────────────────────────
+   Distribui desconto proporcionalmente nos itens do MP
+───────────────────────────────────────────────────────── */
+function buildMpItems(
+  validatedItems,
+  itemsTotal,
+  itemsDiscount,
+  finalShipping,
+) {
+  const items = [];
+  let remaining = itemsDiscount;
+
+  validatedItems.forEach((item, index) => {
+    const subtotal = item.unit_price * item.quantity;
+    let discount = 0;
+
+    if (itemsDiscount > 0) {
+      if (index === validatedItems.length - 1) {
+        discount = remaining;
+      } else {
+        discount = Number(((subtotal / itemsTotal) * itemsDiscount).toFixed(2));
+        remaining = Number((remaining - discount).toFixed(2));
+      }
+    }
+
+    items.push({
+      title: item.title,
+      quantity: item.quantity,
+      currency_id: "BRL",
+      unit_price: Number(
+        (Math.max(0, subtotal - discount) / item.quantity).toFixed(2),
+      ),
+    });
+  });
+
+  if (finalShipping > 0) {
+    items.push({
+      title: "Frete",
+      quantity: 1,
+      currency_id: "BRL",
+      unit_price: Number(finalShipping.toFixed(2)),
+    });
+  }
+
+  return items;
+}
+
+/* ─────────────────────────────────────────────────────────
+   CONTROLLERS
+───────────────────────────────────────────────────────── */
+
+/* GET /payment/:id/link */
 export const getPaymentLink = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
-
     if (!order) return res.status(404).json({ error: "Pedido não encontrado" });
-
     if (!order.payment?.mpPreferenceId)
       return res.status(400).json({ error: "Pedido não possui preference" });
 
-    // busca a preference existente no MP
-    const preference = new Preference(client);
-
-    const mpRes = await preference.get({
+    const pref = new Preference(client);
+    const mpRes = await pref.get({
       preferenceId: order.payment.mpPreferenceId,
     });
 
-    return res.json({
-      init_point: mpRes.init_point,
-    });
+    return res.json({ init_point: mpRes.init_point });
   } catch (err) {
-    console.error("GET PAYMENT LINK ERROR:", err);
+    console.error("GET PAYMENT LINK:", err);
     res.status(500).json({ error: "Erro ao buscar link de pagamento" });
   }
 };
 
+/* POST /checkout */
 export const createCheckoutController = async (req, res) => {
   try {
     const { items, customer, shippingAddress, shipping, coupon } = req.body;
     const user = await User.findById(req.user._id);
 
-    let cpfToUse = "";
-
-    if (!customer?.cpf) {
-      return res.status(400).json({ error: "CPF obrigatório" });
+    // ── CPF ──────────────────────────────────────────────
+    let cpfRaw, cpfHash;
+    try {
+      ({ cpfRaw, cpfHash } = await resolveCpf(customer?.cpf, user));
+    } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message });
     }
 
-    if (customer.cpf === "USE_SAVED_CPF") {
-      if (!user.cpfEncrypted) {
-        return res.status(400).json({ error: "CPF não cadastrado" });
-      }
-
-      cpfToUse = decryptCPF(user.cpfEncrypted);
-    } else {
-      const cleanCpf = customer.cpf.replace(/\D/g, "");
-      cpfToUse = cleanCpf;
-
-      if (!user.cpfEncrypted) {
-        user.cpfEncrypted = encryptCPF(cleanCpf);
-      }
-    }
-
-    const alreadyExists = user.addresses.some(
-      (addr) =>
-        addr.cep === shippingAddress.cep &&
-        addr.number === shippingAddress.number,
-    );
-
-    if (!alreadyExists) {
-      user.addresses.push(shippingAddress);
-    }
-
+    await saveCpfToUser(user, cpfRaw);
+    maybeSaveAddress(user, shippingAddress);
     await user.save();
 
+    // ── Valida produtos ──────────────────────────────────
     const validatedItems = [];
-
     for (const item of items) {
       if (item.type && item.type !== "product") continue;
 
       const product = await Product.findById(item.productId);
-
-      if (!product) {
+      if (!product)
         return res.status(404).json({ error: "Produto não encontrado" });
-      }
-
-      if (product.stock < item.quantity) {
-        return res.status(400).json({ error: "Estoque insuficiente" });
-      }
+      if (product.stock < item.quantity)
+        return res
+          .status(400)
+          .json({ error: `Estoque insuficiente: ${product.name}` });
 
       validatedItems.push({
         productId: product._id,
@@ -113,207 +361,79 @@ export const createCheckoutController = async (req, res) => {
       });
     }
 
-    const orderId = uuidv4();
-
     const itemsTotal = validatedItems.reduce(
-      (sum, item) => sum + item.unit_price * item.quantity,
+      (s, i) => s + i.unit_price * i.quantity,
       0,
     );
+    const originalShipping = Number(shipping) || 0;
 
-    let finalShipping = Number(shipping) || 0;
-    let itemsDiscount = 0;
-    let shippingDiscount = 0;
-    let affiliateData = null;
-
-    // Cupom pode vir como objeto ou string
-    const couponCode =
-      typeof coupon === "string"
-        ? coupon.trim().toUpperCase()
-        : coupon?.code?.trim()?.toUpperCase() || null;
-    if (couponCode) {
-      const alreadyUsed = user.usedCoupons?.some((c) => c.code === couponCode);
-
-      if (alreadyUsed) {
-        return res.status(400).json({
-          error: "Você já utilizou este cupom",
-        });
-      }
-    }
-
-    // =========================
-    // CUPOM DE AFILIADO
-    // =========================
-    if (couponCode) {
-      const affiliateUser = await User.findOne({
-        "affiliate.couponCode": couponCode,
+    // ── Cupom ────────────────────────────────────────────
+    let couponResult;
+    try {
+      couponResult = await processCoupon({
+        couponInput: coupon,
+        userId: req.user._id,
+        cpfHash,
+        itemsTotal,
+        originalShipping,
       });
-      if (couponCode) {
-        const affiliateUser = await User.findOne({
-          "affiliate.couponCode": couponCode,
-        });
-
-        // 🚫 impedir usar próprio cupom
-        if (affiliateUser && affiliateUser._id.equals(req.user._id)) {
-          return res.status(400).json({
-            error: "Você não pode usar seu próprio cupom",
-          });
-        }
-      }
-      if (affiliateUser) {
-        const percentage = Number(
-          affiliateUser.affiliate.discountPercentage || 0,
-        );
-
-        if (percentage > 0) {
-          itemsDiscount = Number(((itemsTotal * percentage) / 100).toFixed(2));
-        }
-
-        affiliateData = {
-          userId: affiliateUser._id,
-          couponCode,
-          discountGiven: itemsDiscount,
-          commissionPercentage: affiliateUser.affiliate.commissionPercentage,
-          commissionValue: Number(
-            (
-              (itemsTotal * affiliateUser.affiliate.commissionPercentage) /
-              100
-            ).toFixed(2),
-          ),
-          status: "pending",
-        };
-      }
+    } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message });
     }
 
-    // =========================
-    // CUPOM NORMAL
-    // =========================
-    if (!affiliateData && coupon && typeof coupon === "object") {
-      if (coupon.type === "percentage") {
-        itemsDiscount = Number(
-          ((itemsTotal * Number(coupon.value || 0)) / 100).toFixed(2),
-        );
-      }
-
-      if (coupon.type === "fixed") {
-        itemsDiscount = Math.min(Number(coupon.value || 0), itemsTotal);
-        itemsDiscount = Number(itemsDiscount.toFixed(2));
-      }
-
-      if (coupon.type === "shipping") {
-        shippingDiscount = Math.min(Number(coupon.value || 0), finalShipping);
-        shippingDiscount = Number(shippingDiscount.toFixed(2));
-        finalShipping = Number((finalShipping - shippingDiscount).toFixed(2));
-      }
-    }
-
-    // garante limites
-    itemsDiscount = Math.min(itemsDiscount, itemsTotal);
-    itemsDiscount = Number(itemsDiscount.toFixed(2));
-
-    // =========================
-    // DISTRIBUI DESCONTO NOS ITENS
-    // =========================
-    let itemsMp = [];
-
-    if (itemsTotal > 0) {
-      let remainingDiscount = itemsDiscount;
-
-      itemsMp = validatedItems.map((item, index) => {
-        const itemSubtotal = item.unit_price * item.quantity;
-
-        let itemDiscount = 0;
-
-        if (itemsDiscount > 0) {
-          if (index === validatedItems.length - 1) {
-            itemDiscount = remainingDiscount;
-          } else {
-            itemDiscount = Number(
-              ((itemSubtotal / itemsTotal) * itemsDiscount).toFixed(2),
-            );
-            remainingDiscount = Number(
-              (remainingDiscount - itemDiscount).toFixed(2),
-            );
-          }
-        }
-
-        const finalSubtotal = Math.max(0, itemSubtotal - itemDiscount);
-        const finalUnitPrice = Number(
-          (finalSubtotal / item.quantity).toFixed(2),
-        );
-
-        return {
-          title: item.title,
-          quantity: item.quantity,
-          currency_id: "BRL",
-          unit_price: finalUnitPrice,
-        };
-      });
-    }
-
-    if (finalShipping > 0) {
-      itemsMp.push({
-        title: "Frete",
-        quantity: 1,
-        currency_id: "BRL",
-        unit_price: Number(finalShipping.toFixed(2)),
-      });
-    }
-
+    const {
+      itemsDiscount,
+      shippingDiscount,
+      finalShipping,
+      affiliateData,
+      couponMeta,
+    } = couponResult;
+    const safeItemsDiscount = Math.min(itemsDiscount, itemsTotal);
     const total = Number(
-      (itemsTotal + finalShipping - itemsDiscount).toFixed(2),
+      (itemsTotal + finalShipping - safeItemsDiscount).toFixed(2),
     );
 
-    const paymentClient = new Payment(client);
+    // ── Monta itens para o Mercado Pago ─────────────────
+    const mpItems = buildMpItems(
+      validatedItems,
+      itemsTotal,
+      safeItemsDiscount,
+      finalShipping,
+    );
 
+    // ── Cria pagamento Pix no MP ─────────────────────────
+    const orderId = uuidv4();
+    const paymentClient = new Payment(client);
     const payment = await paymentClient.create({
       body: {
         transaction_amount: total,
         description: "Compra Royal Parfums",
-
         payment_method_id: "pix",
-
         external_reference: orderId,
-
         payer: {
           email: customer.email,
           first_name: customer.name,
-          identification: {
-            type: "CPF",
-            number: cpfToUse,
-          },
+          identification: { type: "CPF", number: cpfRaw },
         },
-
         notification_url: process.env.BACKEND_URL + "/payment/webhook",
       },
     });
+
     const pixData = payment.point_of_interaction.transaction_data;
 
+    // ── Cria pedido no banco ─────────────────────────────
     await Order.create({
       orderId,
-      userId: req.user?._id,
-      customer,
+      userId: req.user._id,
+      customer: { name: customer.name, email: customer.email },
       affiliate: affiliateData,
       items: validatedItems,
-      coupon: couponCode
-        ? {
-            code: couponCode,
-            type: affiliateData ? "affiliate" : coupon?.type || null,
-            value: affiliateData
-              ? affiliateData.discountGiven
-              : Number(coupon?.value || 0),
-            applied: !!(itemsDiscount > 0 || shippingDiscount > 0),
-          }
-        : {
-            code: null,
-            type: null,
-            value: 0,
-            applied: false,
-          },
+      coupon: couponMeta,
       totals: {
         items: Number(itemsTotal.toFixed(2)),
         subtotal: Number(itemsTotal.toFixed(2)),
-        discount: Number(itemsDiscount.toFixed(2)),
-        originalShipping: Number((Number(shipping) || 0).toFixed(2)),
+        discount: Number(safeItemsDiscount.toFixed(2)),
+        originalShipping: Number(originalShipping.toFixed(2)),
         shippingDiscount: Number(shippingDiscount.toFixed(2)),
         shipping: Number(finalShipping.toFixed(2)),
         total,
@@ -338,33 +458,25 @@ export const createCheckoutController = async (req, res) => {
       ticket_url: pixData.ticket_url,
     });
   } catch (err) {
-    console.error("AUTH ERROR:", err);
+    console.error("CHECKOUT ERROR:", err);
     res.status(500).json({ error: "Erro ao criar checkout" });
   }
 };
 
+/* POST /payment/webhook */
 export const webhookController = async (req, res) => {
   try {
-    console.log("WEBHOOK RECEIVED:", req.body);
-
-    if (req.body?.type !== "payment") {
-      return res.sendStatus(200);
-    }
+    if (req.body?.type !== "payment") return res.sendStatus(200);
 
     const paymentId = req.body?.data?.id;
     if (!paymentId) return res.sendStatus(200);
 
     let payment;
-
     try {
-      const paymentClient = new Payment(client);
-      payment = await paymentClient.get({ id: paymentId });
+      const pc = new Payment(client);
+      payment = await pc.get({ id: paymentId });
     } catch (err) {
-      // se pagamento não existe (ex: teste)
-      if (err.status === 404) {
-        console.log("Pagamento não encontrado (teste ou ainda não criado)");
-        return res.sendStatus(200);
-      }
+      if (err.status === 404) return res.sendStatus(200);
       throw err;
     }
 
@@ -379,57 +491,47 @@ export const webhookController = async (req, res) => {
     const status = payment.status || "unknown";
 
     if (status === "cancelled") {
-      order.payment.status = "rejected"; // mapeia pro seu enum
+      order.payment.status = "rejected";
       order.payment.mpPaymentId = paymentId;
-
       await order.save();
-
       return res.sendStatus(200);
     }
-    // baixa estoque apenas 1x
+
     if (status === "approved" && order.payment.status !== "approved") {
-      if (order.coupon?.code && order.userId) {
+      // 1. Marca cupom como usado (apenas PRIMEIRACOMPRA usa usedCoupons)
+      if (order.coupon?.code === FIRST_PURCHASE_COUPON && order.userId) {
         await User.findByIdAndUpdate(order.userId, {
           $addToSet: {
-            usedCoupons: {
-              code: order.coupon.code,
-              usedAt: new Date(),
-            },
+            usedCoupons: { code: FIRST_PURCHASE_COUPON, usedAt: new Date() },
           },
         });
       }
-      // baixa estoque
+
+      // 2. Baixa estoque
       for (const item of order.items) {
         if (item.type !== "product") continue;
-
         await Product.findOneAndUpdate(
           { _id: item.productId, stock: { $gte: item.quantity } },
           { $inc: { stock: -item.quantity } },
         );
       }
 
-      // =============================
-      // COMISSÃO DE AFILIADO
-      // =============================
+      // 3. Comissão de afiliado
       if (order.affiliate?.userId && order.affiliate.status === "pending") {
         const affiliateUser = await User.findById(order.affiliate.userId);
-
         if (affiliateUser) {
           affiliateUser.affiliate.pendingBalance +=
             order.affiliate.commissionValue;
-
+          affiliateUser.affiliate.totalEarned +=
+            order.affiliate.commissionValue;
           await affiliateUser.save();
-
           order.affiliate.status = "approved";
-
-          console.log("Comissão aprovada para afiliado:", affiliateUser.email);
         }
       }
     }
 
     order.payment.status = status;
     order.payment.mpPaymentId = paymentId;
-
     await order.save();
 
     res.sendStatus(200);
@@ -439,42 +541,113 @@ export const webhookController = async (req, res) => {
   }
 };
 
+/* GET /orders (meus pedidos) */
+export const getMyOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ userId: req.user._id })
+      .populate("userId", "name email cpfEncrypted")
+      .populate("items.productId", "stock name")
+      .lean();
+
+    const formatted = orders.map((order) => ({
+      ...order,
+      userId: order.userId
+        ? {
+            _id: order.userId._id,
+            name: order.userId.name,
+            email: order.userId.email,
+            cpf: order.userId.cpfEncrypted
+              ? maskCPF(decryptCPF(order.userId.cpfEncrypted))
+              : null,
+          }
+        : null,
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao buscar pedidos" });
+  }
+};
+
+/* GET /admin/orders */
+export const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate("userId")
+      .sort({ createdAt: -1 })
+      .lean();
+    const isAdmin = req.user?.role === "admin";
+
+    const formatted = orders.map((order) => {
+      const cpf = order.userId?.cpfEncrypted
+        ? decryptCPF(order.userId.cpfEncrypted)
+        : null;
+
+      return {
+        ...order,
+        userId: order.userId
+          ? {
+              ...order.userId,
+              cpf: isAdmin ? cpf : undefined,
+              cpfEncrypted: undefined,
+              cpfHash: undefined,
+              password: undefined,
+            }
+          : null,
+      };
+    });
+
+    res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao buscar pedidos" });
+  }
+};
+
+/* PATCH /admin/orders/:id/status */
+export const updateDeliveryStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { deliveryStatus: status },
+      { new: true },
+    );
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao atualizar status" });
+  }
+};
+
+/* POST /payment/:id/pay (regerar Pix para pedido existente) */
 export const payOrderController = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ error: "Pedido não encontrado" });
-    }
-
-    if (order.payment.status === "approved") {
+    if (!order) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (order.payment.status === "approved")
       return res.status(400).json({ error: "Pedido já pago" });
-    }
 
-    const total = order.totals.total;
+    const user = await User.findById(order.userId);
+    const cpfRaw = user?.cpfEncrypted ? decryptCPF(user.cpfEncrypted) : "";
 
-    const paymentClient = new Payment(client);
-
-    const payment = await paymentClient.create({
+    const pc = new Payment(client);
+    const payment = await pc.create({
       body: {
-        transaction_amount: total,
+        transaction_amount: order.totals.total,
         description: "Pagamento de pedido existente",
         payment_method_id: "pix",
         external_reference: order.orderId,
         payer: {
           email: order.customer.email,
           first_name: order.customer.name,
-          identification: {
-            type: "CPF",
-            number: order.customer.cpf,
-          },
+          identification: { type: "CPF", number: cpfRaw },
         },
         notification_url: process.env.BACKEND_URL + "/payment/webhook",
       },
     });
 
     const pixData = payment.point_of_interaction.transaction_data;
-
     order.payment.mpPaymentId = payment.id;
     order.payment.status = "pending";
     order.payment.pix = {
@@ -493,138 +666,4 @@ export const payOrderController = async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "Erro ao gerar pagamento" });
   }
-};
-
-export const createOrder = async (req, res) => {
-  try {
-    const { items, totals, address, customer, preferenceId } = req.body;
-
-    const validatedItems = [];
-
-    for (const item of items) {
-      if (item.type && item.type !== "product") {
-        validatedItems.push(item);
-        continue;
-      }
-
-      const product = await Product.findById(item.productId);
-
-      if (!product)
-        return res.status(404).json({ error: "Produto não encontrado" });
-
-      if (product.stock < item.quantity)
-        return res.status(400).json({ error: "Estoque insuficiente" });
-
-      validatedItems.push({
-        productId: product._id,
-        title: product.name,
-        quantity: item.quantity,
-        unit_price: product.price,
-        type: "product",
-      });
-    }
-
-    const order = await Order.create({
-      orderId: "ORD-" + Date.now(),
-      userId: req.user?._id,
-      customer,
-      items: validatedItems,
-
-      totals,
-      shippingAddress: address,
-      payment: {
-        method: "pix",
-        mpPreferenceId: preferenceId,
-      },
-    });
-
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ error: "Erro ao criar pedido" });
-  }
-};
-
-export const getMyOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({
-      userId: req.user._id,
-    })
-      .populate("userId", "name email cpfEncrypted")
-      .populate("items.productId", "stock name")
-      .lean();
-
-    const ordersFormatted = orders.map((order) => {
-      let cpfMasked = null;
-
-      if (order.userId?.cpfEncrypted) {
-        const decrypted = decryptCPF(order.userId.cpfEncrypted);
-        cpfMasked = maskCPF(decrypted);
-      }
-
-      return {
-        ...order,
-        userId: order.userId
-          ? {
-              _id: order.userId._id,
-              name: order.userId.name,
-              email: order.userId.email,
-              cpf: cpfMasked, // 👈 apenas mascarado
-            }
-          : null,
-      };
-    });
-
-    res.json(ordersFormatted);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Erro ao buscar pedidos" });
-  }
-};
-
-export const getAllOrders = async (req, res) => {
-  try {
-    const orders = await Order.find()
-      .populate("userId")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const isAdmin = req.user?.role === "admin";
-
-    const formatted = orders.map((order) => {
-      let cpf = null;
-
-      if (order.userId?.cpfEncrypted) {
-        cpf = decryptCPF(order.userId.cpfEncrypted);
-      }
-
-      return {
-        ...order,
-        userId: order.userId
-          ? {
-              ...order.userId,
-              cpf: isAdmin ? cpf : undefined, // 🔐 só admin recebe
-              cpfEncrypted: undefined,
-              password: undefined,
-            }
-          : null,
-      };
-    });
-
-    res.json(formatted);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Erro ao buscar pedidos" });
-  }
-};
-
-export const updateDeliveryStatus = async (req, res) => {
-  const { status } = req.body;
-
-  const order = await Order.findByIdAndUpdate(
-    req.params.id,
-    { deliveryStatus: status },
-    { new: true },
-  );
-
-  res.json(order);
 };

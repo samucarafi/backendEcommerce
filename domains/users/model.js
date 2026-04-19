@@ -24,48 +24,46 @@ const UserSchema = new mongoose.Schema(
 
     phone: String,
 
-    cpfEncrypted: String, // 🔐 agora criptografado
-    addresses: [addressSchema], // 📦 múltiplos endereços
+    cpfEncrypted: String, // 🔐 AES criptografado (para exibição)
+    cpfHash: String, // 🔑 SHA-256 hash para buscas (não reversível)
+
+    addresses: [addressSchema],
+
+    /**
+     * usedCoupons – histórico de cupons utilizados.
+     *
+     * ⚠️  REGRA DE NEGÓCIO:
+     *   - O cupom "PRIMEIRACOMPRA" só pode ser usado UMA vez por CPF.
+     *     A verificação usa `cpfHash` para garantir mesmo que o usuário
+     *     troque de conta.
+     *   - Todos os outros cupons (afiliados) podem ser usados livremente
+     *     (sem restrição por CPF, apenas o mesmo usuário não pode usar
+     *     duas vezes seguidas se você quiser – mas hoje está livre).
+     */
     usedCoupons: [
       {
         code: String,
         usedAt: { type: Date, default: Date.now },
       },
     ],
+
     affiliate: {
-      couponCode: {
-        type: String,
-        unique: true,
-      },
+      couponCode: { type: String, unique: true, sparse: true },
 
-      discountPercentage: {
-        type: Number,
-        default: 5,
-      },
+      discountPercentage: { type: Number, default: 5 },
+      commissionPercentage: { type: Number, default: 5 },
 
-      commissionPercentage: {
-        type: Number,
-        default: 5,
-      },
-
-      totalEarned: {
-        type: Number,
-        default: 0, // histórico total (NUNCA zera)
-      },
-
-      pendingBalance: {
-        type: Number,
-        default: 0, // 💰 saldo atual a pagar
-      },
-
-      totalPaid: {
-        type: Number,
-        default: 0, // 💸 total já pago
-      },
+      totalEarned: { type: Number, default: 0 },
+      pendingBalance: { type: Number, default: 0 },
+      totalPaid: { type: Number, default: 0 },
     },
+
     dateOfBirth: Date,
   },
   { timestamps: true },
 );
+
+// Índice para busca de hash de CPF (usado na validação do PRIMEIRACOMPRA)
+UserSchema.index({ cpfHash: 1 });
 
 export default mongoose.model("User", UserSchema);

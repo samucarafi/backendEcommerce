@@ -2,15 +2,12 @@ import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, unique: true },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
   customer: {
     name: String,
     email: String,
+    // CPF não é armazenado em texto puro no pedido
   },
 
   items: [
@@ -35,31 +32,33 @@ const orderSchema = new mongoose.Schema({
     code: String,
     type: {
       type: String,
-      enum: ["percentage", "fixed", "shipping", "affiliate", null],
+      enum: [
+        "percentage",
+        "fixed",
+        "shipping",
+        "affiliate",
+        "first_purchase",
+        null,
+      ],
       default: null,
     },
     value: Number,
-    applied: {
-      type: Boolean,
-      default: false,
-    },
+    applied: { type: Boolean, default: false },
+
+    /**
+     * cpfHash – hash SHA-256 do CPF usado na compra.
+     * Usado para garantir que o cupom PRIMEIRACOMPRA
+     * não seja reutilizado pelo mesmo CPF em outra conta.
+     */
+    cpfHash: String,
   },
 
   totals: {
     items: Number,
     subtotal: Number,
-    discount: {
-      type: Number,
-      default: 0,
-    },
-    originalShipping: {
-      type: Number,
-      default: 0,
-    },
-    shippingDiscount: {
-      type: Number,
-      default: 0,
-    },
+    discount: { type: Number, default: 0 },
+    originalShipping: { type: Number, default: 0 },
+    shippingDiscount: { type: Number, default: 0 },
     shipping: Number,
     total: Number,
   },
@@ -97,10 +96,7 @@ const orderSchema = new mongoose.Schema({
   },
 
   affiliate: {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     couponCode: String,
     discountGiven: Number,
     commissionPercentage: Number,

@@ -26,7 +26,7 @@ router.patch(
   adminMiddleware,
   updateDeliveryStatus,
 );
-
+router.get("/payment/:id/link", authTokenMiddleware, getPaymentLink);
 router.post("/payment/webhook", webhookController);
 
 export default router;
