@@ -13,10 +13,10 @@
 import "dotenv/config.js";
 import mongoose from "mongoose";
 import { decryptCPF, hashCPF } from "../utils/cpfCrypto.js";
-import User from "../modules/users/model.js";
+import User from "../domains/users/model.js";
 
 async function run() {
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGO_URI);
   console.log("Conectado ao MongoDB.");
 
   const users = await User.find({
