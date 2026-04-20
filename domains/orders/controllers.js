@@ -545,6 +545,7 @@ export const webhookController = async (req, res) => {
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.user._id })
+      .sort({ createdAt: -1 }) // 👈 AQUI
       .populate("userId", "name email cpfEncrypted")
       .populate("items.productId", "stock name")
       .lean();
